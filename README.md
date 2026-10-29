@@ -31,6 +31,7 @@ Email, webhooks, AWS scheduling, additional providers, authentication, and a fro
 ## Project documents
 
 - [Product requirements](docs/REQUIREMENTS.md)
+- [System design](docs/SYSTEM_DESIGN.md)
 - [Phased build and commit plan](docs/ROADMAP.md)
 
 ## Current status
