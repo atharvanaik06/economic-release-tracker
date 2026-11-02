@@ -9,7 +9,7 @@
 __pycache__/
 *.egg-info/
 *.py[cod]
-.coverage
+.coverage*
 build/
 coverage.xml
 dist/
