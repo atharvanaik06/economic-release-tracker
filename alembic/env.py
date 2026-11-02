@@ -13,9 +13,9 @@ from alembic import context
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from macromonitor.core.config import get_settings  # noqa: E402
-from macromonitor.db import models  # noqa: E402, F401
-from macromonitor.db.base import Base  # noqa: E402
+from research_data_builder.core.config import get_settings  # noqa: E402
+from research_data_builder.db import models  # noqa: E402, F401
+from research_data_builder.db.base import Base  # noqa: E402
 
 config = context.config
 

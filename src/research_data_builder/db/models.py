@@ -24,7 +24,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from macromonitor.db.base import Base
+from research_data_builder.db.base import Base
 
 
 class SyncStatus(StrEnum):

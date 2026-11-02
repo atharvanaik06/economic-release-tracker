@@ -21,5 +21,5 @@ USER appuser
 
 EXPOSE 8000
 
-CMD ["uvicorn", "macromonitor.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "research_data_builder.main:app", "--host", "0.0.0.0", "--port", "8000"]
 

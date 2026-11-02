@@ -3,7 +3,7 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
-from macromonitor.db.session import Database
+from research_data_builder.db.session import Database
 
 
 class AsyncContext:

@@ -3,8 +3,8 @@
 import pytest
 from fastapi import FastAPI
 
-from macromonitor.core.config import Settings
-from macromonitor.main import create_app
+from research_data_builder.core.config import Settings
+from research_data_builder.main import create_app
 from tests.fakes import FakeDatabase
 
 

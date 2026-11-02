@@ -5,8 +5,8 @@ import logging
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
 
-from macromonitor.core.config import Settings
-from macromonitor.db.session import DatabaseLifecycle
+from research_data_builder.core.config import Settings
+from research_data_builder.db.session import DatabaseLifecycle
 
 logger = logging.getLogger(__name__)
 

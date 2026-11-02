@@ -6,27 +6,27 @@ from typing import Literal
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from macromonitor import __version__
+from research_data_builder import __version__
 
 Environment = Literal["development", "test", "production"]
 
 
 class Settings(BaseSettings):
-    """MacroMonitor settings loaded from environment variables or a local .env file."""
+    """Research Data Builder settings loaded from the environment or a local .env file."""
 
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        env_prefix="MACROMONITOR_",
+        env_prefix="RESEARCH_DATA_",
         extra="ignore",
     )
 
-    app_name: str = "macromonitor"
+    app_name: str = "research-data-builder"
     app_version: str = __version__
     environment: Environment = "development"
     log_level: str = "INFO"
     database_url: str = Field(
-        default="postgresql+psycopg://macromonitor:macromonitor@localhost:5432/macromonitor",
+        default="postgresql+psycopg://research_data:research_data@localhost:5432/research_data",
         min_length=1,
     )
     fred_api_key: SecretStr | None = None

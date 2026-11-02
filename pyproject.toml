@@ -3,9 +3,9 @@ requires = ["setuptools>=75"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "macromonitor"
+name = "research-data-builder"
 version = "0.1.0"
-description = "Monitor economic releases, revisions, and webhook notifications."
+description = "Build reproducible research datasets from public economic APIs."
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [{ name = "Atharva Naik" }]
@@ -38,7 +38,7 @@ testpaths = ["tests"]
 
 [tool.coverage.run]
 branch = true
-source = ["macromonitor"]
+source = ["research_data_builder"]
 
 [tool.coverage.report]
 show_missing = true
@@ -58,5 +58,5 @@ quote-style = "double"
 [tool.mypy]
 python_version = "3.12"
 strict = true
-packages = ["macromonitor"]
+packages = ["research_data_builder"]
 

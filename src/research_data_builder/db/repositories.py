@@ -9,7 +9,7 @@ from uuid import UUID
 from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from macromonitor.db.models import (
+from research_data_builder.db.models import (
     ChangeEvent,
     ChangeType,
     ObservationVersion,

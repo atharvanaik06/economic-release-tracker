@@ -9,8 +9,14 @@ import pytest
 from sqlalchemy import delete
 from sqlalchemy.exc import IntegrityError
 
-from macromonitor.db.models import ChangeEvent, ChangeType, ObservationVersion, Series, SyncRun
-from macromonitor.db.repositories import (
+from research_data_builder.db.models import (
+    ChangeEvent,
+    ChangeType,
+    ObservationVersion,
+    Series,
+    SyncRun,
+)
+from research_data_builder.db.repositories import (
     ChangeEventInput,
     ChangeEventRepository,
     ObservationVersionInput,
@@ -20,9 +26,9 @@ from macromonitor.db.repositories import (
     SyncCounts,
     SyncRunRepository,
 )
-from macromonitor.db.session import Database
+from research_data_builder.db.session import Database
 
-TEST_DATABASE_URL = os.getenv("MACROMONITOR_TEST_DATABASE_URL")
+TEST_DATABASE_URL = os.getenv("RESEARCH_DATA_TEST_DATABASE_URL")
 
 pytestmark = [
     pytest.mark.integration,

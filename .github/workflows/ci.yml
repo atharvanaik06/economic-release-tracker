@@ -14,20 +14,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      MACROMONITOR_DATABASE_URL: postgresql+psycopg://macromonitor:macromonitor@localhost:5432/macromonitor_test
-      MACROMONITOR_TEST_DATABASE_URL: postgresql+psycopg://macromonitor:macromonitor@localhost:5432/macromonitor_test
+      RESEARCH_DATA_DATABASE_URL: postgresql+psycopg://research_data:research_data@localhost:5432/research_data_test
+      RESEARCH_DATA_TEST_DATABASE_URL: postgresql+psycopg://research_data:research_data@localhost:5432/research_data_test
 
     services:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_DB: macromonitor_test
-          POSTGRES_PASSWORD: macromonitor
-          POSTGRES_USER: macromonitor
+          POSTGRES_DB: research_data_test
+          POSTGRES_PASSWORD: research_data
+          POSTGRES_USER: research_data
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U macromonitor -d macromonitor_test"
+          --health-cmd "pg_isready -U research_data -d research_data_test"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
@@ -64,7 +64,7 @@ jobs:
           alembic check
 
       - name: Test
-        run: pytest --cov=macromonitor --cov-report=term-missing --cov-report=xml
+        run: pytest --cov=research_data_builder --cov-report=term-missing --cov-report=xml
 
       - name: Verify migration round trip
         run: |
@@ -84,4 +84,4 @@ jobs:
         run: docker compose config --quiet
 
       - name: Build production image
-        run: docker build --tag macromonitor:ci .
+        run: docker build --tag research-data-builder:ci .

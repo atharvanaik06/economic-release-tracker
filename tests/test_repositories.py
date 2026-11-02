@@ -8,8 +8,8 @@ from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from macromonitor.db.models import ChangeType, SyncStatus
-from macromonitor.db.repositories import (
+from research_data_builder.db.models import ChangeType, SyncStatus
+from research_data_builder.db.repositories import (
     ChangeEventInput,
     ChangeEventRepository,
     ObservationVersionInput,

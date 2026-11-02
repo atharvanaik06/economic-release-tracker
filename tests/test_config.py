@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from macromonitor.core.config import Settings
+from research_data_builder.core.config import Settings
 
 
 def test_settings_use_safe_defaults() -> None:
@@ -15,8 +15,8 @@ def test_settings_use_safe_defaults() -> None:
 
 
 def test_settings_load_prefixed_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MACROMONITOR_ENVIRONMENT", "production")
-    monkeypatch.setenv("MACROMONITOR_LOG_LEVEL", "warning")
+    monkeypatch.setenv("RESEARCH_DATA_ENVIRONMENT", "production")
+    monkeypatch.setenv("RESEARCH_DATA_LOG_LEVEL", "warning")
 
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
 

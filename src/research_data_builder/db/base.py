@@ -13,6 +13,6 @@ NAMING_CONVENTION = {
 
 
 class Base(DeclarativeBase):
-    """Base class for all MacroMonitor ORM models."""
+    """Base class for all Research Data Builder ORM models."""
 
     metadata = MetaData(naming_convention=NAMING_CONVENTION)

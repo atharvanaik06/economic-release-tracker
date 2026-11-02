@@ -6,10 +6,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from macromonitor.api.health import router as health_router
-from macromonitor.core.config import Settings, get_settings
-from macromonitor.core.logging import configure_logging
-from macromonitor.db.session import Database, DatabaseLifecycle
+from research_data_builder.api.health import router as health_router
+from research_data_builder.core.config import Settings, get_settings
+from research_data_builder.core.logging import configure_logging
+from research_data_builder.db.session import Database, DatabaseLifecycle
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ def create_app(
     settings: Settings | None = None,
     database: DatabaseLifecycle | None = None,
 ) -> FastAPI:
-    """Create a configured MacroMonitor application instance."""
+    """Create a configured Research Data Builder application instance."""
     resolved_settings = settings or get_settings()
     configure_logging(resolved_settings.log_level)
     resolved_database = database or Database(resolved_settings.database_url)
@@ -29,8 +29,8 @@ def create_app(
         await resolved_database.dispose()
 
     application = FastAPI(
-        title="MacroMonitor API",
-        summary="Monitor economic releases, revisions, and webhook notifications.",
+        title="Research Data Builder API",
+        summary="Build validated and reproducible datasets from public research APIs.",
         version=resolved_settings.app_version,
         lifespan=lifespan,
     )

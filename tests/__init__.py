@@ -1,1 +1,1 @@
-"""MacroMonitor test suite."""
+"""Research Data Builder test suite."""

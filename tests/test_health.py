@@ -21,7 +21,7 @@ def test_health_reports_service_metadata(app: FastAPI) -> None:
     assert response.status_code == 200
     assert response.json() == {
         "status": "healthy",
-        "service": "macromonitor",
+        "service": "research-data-builder",
         "version": "0.1.0",
         "environment": "test",
     }
@@ -31,7 +31,7 @@ def test_openapi_document_is_available(app: FastAPI) -> None:
     response = asyncio.run(request(app, "/openapi.json"))
 
     assert response.status_code == 200
-    assert response.json()["info"]["title"] == "MacroMonitor API"
+    assert response.json()["info"]["title"] == "Research Data Builder API"
     assert "/health" in response.json()["paths"]
     assert "/ready" in response.json()["paths"]
 
