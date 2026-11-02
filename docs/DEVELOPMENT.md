@@ -22,7 +22,7 @@ cp .env.example .env
 Run the application directly from the source tree:
 
 ```bash
-.venv/bin/uvicorn macromonitor.main:app --app-dir src --reload
+.venv/bin/uvicorn research_data_builder.main:app --app-dir src --reload
 ```
 
 Using `--app-dir src` ensures development runs always use the current source files. The CI workflow also performs a regular package installation to verify that the distributable project is valid.
@@ -82,17 +82,17 @@ Schema changes must be represented by a reviewed Alembic revision. Do not modify
 
 ## Configuration
 
-Settings use the `MACROMONITOR_` environment prefix.
+Settings use the `RESEARCH_DATA_` environment prefix.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `MACROMONITOR_ENVIRONMENT` | `development` | `development`, `test`, or `production` |
-| `MACROMONITOR_LOG_LEVEL` | `INFO` | Python log level |
-| `MACROMONITOR_DATABASE_URL` | local PostgreSQL URL | Database connection string |
-| `MACROMONITOR_TEST_DATABASE_URL` | unset | Enables real PostgreSQL integration tests |
-| `MACROMONITOR_FRED_API_KEY` | unset | Reserved for Phase 3 FRED integration |
+| `RESEARCH_DATA_ENVIRONMENT` | `development` | `development`, `test`, or `production` |
+| `RESEARCH_DATA_LOG_LEVEL` | `INFO` | Python log level |
+| `RESEARCH_DATA_DATABASE_URL` | local PostgreSQL URL | Database connection string |
+| `RESEARCH_DATA_TEST_DATABASE_URL` | unset | Enables real PostgreSQL integration tests |
+| `RESEARCH_DATA_FRED_API_KEY` | unset | Reserved for the Phase 3 FRED connector |
 
-Copy `.env.example` to `.env` for local overrides. `.env` is ignored by Git. Never commit provider keys, passwords, or webhook secrets.
+Copy `.env.example` to `.env` for local overrides. `.env` is ignored by Git. Never commit provider keys, passwords, or private research credentials.
 
 ## Quality checks
 
@@ -108,19 +108,19 @@ Run the same quality gates used by CI:
 .venv/bin/ruff format --check .
 .venv/bin/ruff check .
 .venv/bin/mypy src tests
-.venv/bin/pytest --cov=macromonitor --cov-report=term-missing
+.venv/bin/pytest --cov=research_data_builder --cov-report=term-missing
 ```
 
 The coverage gate is configured at 90%. New functionality should include tests for success, validation, and failure behavior.
 
-Integration tests are skipped when `MACROMONITOR_TEST_DATABASE_URL` is unset. CI supplies a PostgreSQL service, applies the migration, checks for model/schema drift, runs the tests, and verifies downgrade/upgrade behavior.
+Integration tests are skipped when `RESEARCH_DATA_TEST_DATABASE_URL` is unset. CI supplies a PostgreSQL service, applies the migration, checks for model/schema drift, runs the tests, and verifies downgrade/upgrade behavior.
 
 ## Dependency workflow
 
 - `pyproject.toml` declares supported dependency ranges and tool configuration.
 - `requirements.lock` records the complete development and CI environment.
 - `requirements.runtime.lock` records only production runtime dependencies.
-- The Docker image installs the runtime lock and then installs MacroMonitor with `--no-deps`.
+- The Docker image installs the runtime lock and then installs Research Data Builder with `--no-deps`.
 
 When dependencies intentionally change, regenerate and review both lock files, reinstall into a clean environment, and run the full quality suite.
 

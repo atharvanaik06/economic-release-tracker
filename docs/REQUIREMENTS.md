@@ -1,285 +1,317 @@
-# MacroMonitor Product Requirements
+# Research Data Builder Product Requirements
 
 ## 1. Product summary
 
-MacroMonitor monitors economic indicators selected by users. It retrieves official data, compares each release with previously stored versions, records exactly what changed, and notifies subscribed applications through reliable webhooks.
+Research Data Builder retrieves structured data from supported public APIs, harmonizes it into a common research schema, validates the result, and exports a reproducible dataset bundle.
 
-It is not a replacement for FRED. Its value is the workflow FRED does not conveniently provide:
+The product does not attempt to support every possible dataset. Its initial scope is public economic and social time-series data available through FRED and World Bank APIs.
 
-- continuously monitor selected series;
-- detect new and revised observations;
-- preserve an audit history;
-- deliver structured change events;
-- retry and inspect failed notifications.
+Its value is the work around downloading:
+
+- combining several providers;
+- normalizing indicators, entities, dates, units, and frequencies;
+- making transformations explicit;
+- identifying missing or suspicious coverage;
+- recording exact input versions and build decisions;
+- generating research-ready data and documentation together;
+- rebuilding the same dataset later.
 
 ## 2. Problem, simplified
 
-Economic values change after publication:
+A researcher wants an annual panel containing GDP growth, inflation, and unemployment for several countries from 2000 through 2025.
 
-```text
-Previously stored data       Latest provider response
-August:    324.1             August:    324.0  -> revised
-September: 325.3             September: 325.5  -> revised
-                             October:   326.4  -> new
+Without the product, the researcher must locate indicators, call or download from several sources, normalize country identifiers, interpret units, reshape responses, align dates, join tables, inspect missing values, document sources, and write the process again when data changes.
+
+With Research Data Builder, the researcher saves a recipe:
+
+```yaml
+name: european_macro_panel
+entities: [CZE, DEU, FRA, POL]
+period: { start: 2000, end: 2025 }
+variables:
+  - provider: world_bank
+    indicator: NY.GDP.MKTP.KD.ZG
+    name: gdp_growth
+  - provider: world_bank
+    indicator: FP.CPI.TOTL.ZG
+    name: inflation
+output:
+  frequency: annual
+  formats: [csv, parquet]
 ```
 
-Without MacroMonitor, an analyst must repeatedly inspect provider pages or compare downloads manually. With MacroMonitor, the user selects the series once and receives a structured event whenever something meaningful changes.
+One deterministic build produces data, documentation, validation, provenance, and checksums.
 
 ## 3. Target users
 
-### Primary: analysts and data teams
+### Primary: economics students and researchers
 
-- Monitor important economic indicators in one place.
-- See only the observations that changed.
-- Retain an auditable release and revision history.
+- Assemble multi-series or multi-country datasets faster.
+- Understand exactly which source indicators and transformations were used.
+- Share a reproducible recipe rather than an unexplained spreadsheet.
 
-### Secondary: application developers
+### Secondary: analysts and data teams
 
-- Subscribe an application to machine-readable economic change events.
-- Receive signed webhook payloads.
-- Inspect delivery attempts and replay failed deliveries.
+- Refresh recurring public-data datasets.
+- Detect upstream changes and coverage problems.
+- Reuse standardized provider connectors and transformations.
 
-### Later: researchers and quantitative users
+### Later: instructors and research collaborators
 
-- Analyze revision patterns.
-- Reconstruct point-in-time datasets.
-- Avoid look-ahead bias in historical analysis.
-
-Research functionality is an extension, not the initial product.
+- Review student data preparation.
+- Reproduce a collaborator's build.
+- Compare dataset versions over time.
 
 ## 4. Product MVP user stories
 
-1. As a user, I can browse the economic series supported by the service.
-2. As a user, I can create a watchlist and add series to it.
-3. As an operator, I can trigger synchronization manually.
-4. As the system, I can schedule synchronization without user intervention.
-5. As a user, I can see which observations were new, revised, removed, or missing.
-6. As a user, I can inspect every stored version of an observation.
-7. As a developer, I can subscribe a webhook to a watchlist.
-8. As a developer, I can verify that a webhook came from MacroMonitor.
-9. As a developer, I can inspect successful and failed delivery attempts.
-10. As an operator, I can safely retry a failed job or delivery without creating duplicates.
+1. As a researcher, I can search supported provider indicators.
+2. As a researcher, I can select variables, entities, and a time range.
+3. As a researcher, I can inspect source units, frequencies, and descriptions before building.
+4. As a researcher, I can save a versioned dataset recipe.
+5. As a researcher, I can build the recipe using deterministic transformations.
+6. As a researcher, I can preview the joined research table.
+7. As a researcher, I can see missing coverage and validation warnings.
+8. As a researcher, I can export CSV and Parquet data.
+9. As a researcher, I receive a codebook, source manifest, citations, and checksum.
+10. As a collaborator, I can rebuild the same recipe and verify whether its inputs changed.
 
 ## 5. Functional requirements
 
-### FR-1: Series catalog
+### FR-1: Provider connector contract
 
-- Store provider ID, title, units, frequency, source, and active status.
-- Begin with a small configured set of FRED series such as CPI, unemployment, GDP, and the federal funds rate.
-- Refresh provider metadata and detect unit or frequency changes.
-- Reject unknown or inactive series IDs.
+- Define one interface for provider metadata search, indicator retrieval, and observation retrieval.
+- Keep provider response models outside the build engine.
+- Normalize provider errors into stable application categories.
+- Support explicit timeouts, bounded retries, pagination, and rate-limit handling.
+- Begin with FRED and World Bank implementations.
 
-### FR-2: Watchlists
+### FR-2: Provider catalog and discovery
 
-- Create, read, update, and delete watchlists.
-- Add or remove supported series.
-- Prevent the same series from appearing twice in one watchlist.
-- Associate watchlists with an owner once authentication is enabled.
+- Store provider, indicator ID, title, description, units, frequency, and entity dimensions.
+- Search indicators by ID or text.
+- Display source metadata before a variable is added to a recipe.
+- Refresh metadata without creating duplicate indicators.
 
-### FR-3: Provider ingestion
+### FR-3: Normalized observations
 
-- Retrieve observations and relevant metadata from FRED.
-- Use explicit connection and response timeouts.
-- Retry only transient failures with bounded exponential backoff and jitter.
-- Normalize provider responses into internal domain objects.
-- Record retrieval time and provider vintage dates when available.
-- Read provider credentials from environment variables or a secret manager.
+- Convert provider responses into a common observation model.
+- Preserve provider identity, indicator ID, entity, period, value, units, retrieval time, and available source-version fields.
+- Use decimal-safe numeric values.
+- Represent missing observations explicitly.
+- Preserve repeated source versions instead of silently overwriting them.
 
-### FR-4: Version history
+### FR-4: Dataset recipes
 
-- Preserve every materially different value seen for a series and period.
-- Never overwrite an older observation version.
-- Store decimal values without binary floating-point comparison.
-- Represent missing values explicitly rather than converting them to zero.
-- Record when the platform first observed each version.
-- Prevent duplicate versions with database constraints.
+- Create, read, update, and version recipes.
+- Specify providers, indicators, variable names, entities, date ranges, frequency, transformations, join rules, and missing-value policy.
+- Validate recipes before execution.
+- Freeze a recipe version when a build starts.
+- Store recipes as structured data and allow YAML/JSON import and export.
 
-### FR-5: Change detection
+### FR-5: Build orchestration
 
-- Compare incoming normalized observations with the latest stored state.
-- Classify results as `new`, `revised`, `unchanged`, `removed`, or `missing`.
-- Calculate signed and absolute revision amounts.
-- Detect relevant series metadata changes.
-- Create immutable change events for meaningful changes.
-- Save the sync run, versions, and events atomically.
+- Create an auditable build run from one recipe version.
+- Resolve and retrieve required provider inputs.
+- Reuse suitable cached inputs when the recipe permits it.
+- Record running, successful, and failed build states.
+- Prevent duplicate builds for the same deterministic input identity.
+- Never mark a build successful if required exports or provenance are incomplete.
 
-### FR-6: Synchronization
+### FR-6: Harmonization
 
-- Support manual synchronization for development and administration.
-- Support scheduled synchronization for watched active series.
-- Avoid overlapping synchronization of the same series.
-- Reprocessing identical input must not create duplicate versions or events.
-- Record running, successful, and failed sync states with summary counts.
+- Normalize supported country/entity identifiers to a documented canonical code.
+- Normalize period representations.
+- Convert provider response shapes to tidy long-form observations.
+- Support explicit frequency conversion rules.
+- Reject ambiguous automatic conversions.
+- Preserve source units and record every applied conversion.
 
-### FR-7: Release and revision API
+### FR-7: Transformations
 
-- List tracked series and metadata.
-- List synchronization runs.
-- Return changes produced by a sync run.
-- Return all known versions for a series and economic period.
-- Return a feed of change events relevant to a watchlist.
-- Paginate all unbounded collections.
+- Support a small reviewed transformation set such as rename, filter, lag, difference, percent change, annual aggregation, and unit scaling.
+- Apply transformations in declared order.
+- Avoid arbitrary user code in the MVP.
+- Record transformation parameters and engine version.
+- Produce the same logical output for the same inputs and recipe.
 
-### FR-8: Webhook subscriptions
+### FR-8: Join and output construction
 
-- Create, list, disable, and delete webhook subscriptions for a watchlist.
-- Validate HTTPS callback URLs in production.
-- Store webhook secrets securely.
-- Allow event-type filtering.
-- Send a test event before enabling a subscription.
+- Join variables on explicit entity and period keys.
+- Report unmatched rows instead of silently dropping them.
+- Support long and wide output layouts.
+- Preserve stable column ordering and types.
+- Produce a preview before final export.
 
-### FR-9: Webhook delivery
+### FR-9: Validation
 
-- Deliver the series, period, previous value, new value, revision amount, and event timestamp.
-- Sign each request with HMAC using the subscription secret.
-- Include an event ID and timestamp for replay protection.
-- Deliver asynchronously outside the API request path.
-- Retry transient failures using bounded exponential backoff.
-- Record every attempt, response status, duration, and sanitized failure category.
-- Move exhausted deliveries to a dead-letter state.
-- Support safe manual replay without producing a second logical event.
+- Measure expected versus observed entity-period coverage.
+- Report missing values, duplicate keys, unexpected types, and invalid ranges.
+- Allow recipe-defined validation rules.
+- Distinguish warnings from build-blocking errors.
+- Store validation results with the build.
 
-### FR-10: Authentication and ownership
+### FR-10: Reproducibility and provenance
 
-- Authentication is not required for the earliest local engine milestones.
-- It is required before public deployment.
-- Users may access only their own watchlists, subscriptions, and delivery history.
-- Administrative synchronization and replay operations require elevated authorization.
+- Record recipe version, provider requests, retrieved input versions, transformations, software version, and build timestamps.
+- Generate deterministic checksums for canonical logical content.
+- Explain the source and transformation lineage of every output variable.
+- Rebuild a historical recipe and report changed upstream inputs.
 
-### FR-11: Email notifications
+### FR-11: Export bundle
 
-Email may be added after webhook delivery is reliable. It is not required for the product MVP because webhooks demonstrate the asynchronous delivery system without adding email-provider and template complexity.
+- Export CSV and Parquet.
+- Generate a machine-readable manifest.
+- Generate a human-readable codebook.
+- Generate provider citations or citation guidance.
+- Package validation results and checksum with the export.
+- Store large artifacts outside PostgreSQL while retaining their metadata and location.
+
+### FR-12: Authentication and collaboration
+
+- Authentication is not required for the earliest local MVP.
+- It is required before public multi-user deployment.
+- Users may access only their own private recipes, builds, credentials, and exports.
+- A later collaboration model may support shared read or build permissions.
+
+### FR-13: AI assistance
+
+AI-assisted indicator discovery and recipe drafting are optional later features. The deterministic recipe and build engine remain the authority. An AI suggestion must never silently select sources, transformations, or missing-value policies.
 
 ## 6. Proposed API surface
 
 ```text
 GET    /health
+GET    /ready
 
-GET    /api/v1/series
-GET    /api/v1/series/{series_id}
-POST   /api/v1/series/{series_id}/sync
-GET    /api/v1/series/{series_id}/sync-runs
-GET    /api/v1/series/{series_id}/revisions?period=YYYY-MM-DD
+GET    /api/v1/providers
+GET    /api/v1/providers/{provider_id}/indicators
+GET    /api/v1/providers/{provider_id}/indicators/{indicator_id}
 
-POST   /api/v1/watchlists
-GET    /api/v1/watchlists
-GET    /api/v1/watchlists/{watchlist_id}
-PATCH  /api/v1/watchlists/{watchlist_id}
-DELETE /api/v1/watchlists/{watchlist_id}
-PUT    /api/v1/watchlists/{watchlist_id}/series/{series_id}
-DELETE /api/v1/watchlists/{watchlist_id}/series/{series_id}
-GET    /api/v1/watchlists/{watchlist_id}/events
+POST   /api/v1/recipes
+GET    /api/v1/recipes
+GET    /api/v1/recipes/{recipe_id}
+PATCH  /api/v1/recipes/{recipe_id}
+POST   /api/v1/recipes/{recipe_id}/versions
+GET    /api/v1/recipes/{recipe_id}/versions
+POST   /api/v1/recipes/{recipe_id}/validate
 
-GET    /api/v1/sync-runs/{run_id}
-GET    /api/v1/sync-runs/{run_id}/changes
-
-POST   /api/v1/watchlists/{watchlist_id}/webhooks
-GET    /api/v1/watchlists/{watchlist_id}/webhooks
-DELETE /api/v1/webhooks/{subscription_id}
-POST   /api/v1/webhooks/{subscription_id}/test
-GET    /api/v1/webhooks/{subscription_id}/deliveries
-POST   /api/v1/deliveries/{delivery_id}/replay
+POST   /api/v1/recipe-versions/{version_id}/builds
+GET    /api/v1/builds/{build_id}
+GET    /api/v1/builds/{build_id}/preview
+GET    /api/v1/builds/{build_id}/validation
+GET    /api/v1/builds/{build_id}/lineage
+GET    /api/v1/builds/{build_id}/exports
 ```
 
 ## 7. Conceptual data model
 
-- `users`: authenticated owners and roles.
-- `series`: provider series metadata.
-- `watchlists`: user-owned monitoring groups.
-- `watchlist_series`: many-to-many membership.
-- `sync_runs`: ingestion attempt, status, timing, and result counts.
-- `observation_versions`: append-only values for each series and economic period.
-- `change_events`: immutable meaningful differences produced by synchronization.
-- `webhook_subscriptions`: callback configuration, filters, status, and secret reference.
-- `deliveries`: one logical event delivery per subscription.
-- `delivery_attempts`: each HTTP attempt, response, duration, and error category.
+Already implemented foundation:
 
-Exact columns and constraints will be finalized before the first migration.
+- `series`: provider indicator metadata.
+- `sync_runs`: provider retrieval audit records.
+- `observation_versions`: append-only normalized provider values.
+- `change_events`: changes between provider input versions.
+
+Planned product records:
+
+- `providers`: connector capabilities and configuration.
+- `dataset_recipes`: user-facing dataset definitions.
+- `recipe_versions`: immutable recipe snapshots.
+- `recipe_variables`: selected provider indicators and output names.
+- `build_runs`: execution status, identity, timing, and summary.
+- `build_inputs`: exact source versions used.
+- `transformation_steps`: ordered deterministic operations.
+- `validation_results`: coverage, warning, and error records.
+- `exports`: format, location, row count, schema, and checksum.
+- `users` and ownership records before public deployment.
+
+Large raw responses and generated files may be stored as local files in the MVP and object storage in production. PostgreSQL stores their identity, metadata, lineage, and checksum.
 
 ## 8. Non-functional requirements
 
-### Correctness and consistency
+### Correctness
 
-- Use Python `Decimal` and PostgreSQL `NUMERIC`.
-- Write a sync run, its versions, and its change events in one transaction.
-- Use database constraints as the final duplicate defense.
+- Use `Decimal` and PostgreSQL `NUMERIC` for numeric source values.
+- Never perform an undocumented conversion.
+- Make join keys and frequency rules explicit.
+- Preserve source metadata and missing values.
 
-### Idempotency
+### Determinism and reproducibility
 
-- Repeating provider input creates no duplicate observation versions or events.
-- Redelivered queue messages create no duplicate logical deliveries.
-- Mutation endpoints support an idempotency key where client retries are expected.
+- Identical recipe, input versions, and engine version produce identical canonical output.
+- Generated manifests use stable ordering and serialization.
+- Checksums exclude non-deterministic presentation fields.
+
+### Consistency
+
+- Build status, input lineage, validation, and export metadata transition atomically where possible.
+- Failed artifact creation must not produce a successful build.
+- Database constraints provide final duplicate protection.
 
 ### Reliability
 
-- A provider failure must not produce a partially successful sync.
-- FRED outages must not prevent reads of stored history.
-- Notification failures must not roll back committed economic data.
-- Queued work is retried and eventually dead-lettered for inspection.
+- Provider calls use timeouts and bounded retries.
+- Previously stored inputs and exports remain available during provider outages.
+- Retried jobs do not create duplicate logical builds.
 
 ### Performance and scale
 
-- Common reads should remain responsive with at least one million observation-version rows.
-- Collection endpoints use bounded cursor pagination.
-- Workers can scale independently from the API.
-- Series synchronization can be distributed while retaining per-series concurrency control.
+- Stream or batch large provider results.
+- Avoid loading unbounded datasets into API-process memory.
+- Use Polars or DuckDB for analytical transformations.
+- Keep PostgreSQL focused on metadata, lineage, version history, and transactional state.
 
 ### Security
 
-- No credentials or webhook secrets are committed to Git.
-- Inputs, callback URLs, ranges, and payload sizes are validated.
-- Webhook requests are signed and timestamped.
-- Logs redact secrets, authorization headers, and sensitive callback details.
-- Public deployment includes authentication, authorization, TLS, and rate limiting.
+- Provider credentials and database passwords remain outside source control.
+- Validate recipe sizes, provider parameters, filenames, and export paths.
+- Public deployment enforces authentication, authorization, TLS, and rate limits.
 
 ### Observability
 
-- Structured logs carry request, job, sync-run, event, and delivery IDs.
-- Metrics cover API latency, provider failures, series staleness, queue age, revision counts, webhook success, retries, and dead letters.
-- Alerts focus on sustained user-impacting failures.
+- Structured logs connect request, recipe version, build, provider retrieval, validation, and export IDs.
+- Metrics include provider latency, build duration, rows processed, cache reuse, validation failures, and export failures.
 
 ### Maintainability and testability
 
-- Provider-specific code remains behind an interface.
-- Schema changes use Alembic migrations.
-- Core business logic runs against deterministic fixtures without network access.
-- CI runs formatting, linting, type checking, unit tests, and integration tests.
+- Provider connectors implement one contract.
+- Transformations are small deterministic functions.
+- CI runs against recorded fixtures rather than relying on live APIs.
+- PostgreSQL migrations are checked for schema drift and round-trip behavior.
 
-## 9. Product MVP acceptance criteria
+## 9. Local MVP acceptance criteria
 
-The local product MVP is complete when a reviewer can:
+The product MVP is complete when a reviewer can:
 
-1. start the API, workers, local queue, and PostgreSQL from documented commands;
-2. create a watchlist containing at least three FRED series;
-3. execute two fixture releases that produce a new observation and revision;
-4. repeat the same ingestion without duplicate versions or events;
-5. inspect changes and revision history through the API;
-6. subscribe a local test webhook;
-7. observe a signed webhook generated from the change event;
-8. simulate failure, inspect retries, and see the exhausted delivery state;
-9. replay the failed delivery safely;
-10. run the complete automated test suite successfully.
+1. start the API, PostgreSQL, and local build worker;
+2. discover indicators from FRED and World Bank fixtures;
+3. create a recipe containing at least three variables and four countries;
+4. validate and freeze the recipe;
+5. build a joined annual panel deterministically;
+6. inspect missing coverage and unmatched joins;
+7. export CSV and Parquet;
+8. open the generated codebook, manifest, citations, and validation report;
+9. rebuild from the same inputs and receive the same checksum;
+10. change a source fixture and see the input and output differences reported;
+11. run the complete automated test suite successfully.
 
-The public production release additionally requires authentication, AWS deployment, monitoring, backups, and an operational runbook.
+## 10. Out of scope for the local MVP
 
-## 10. Out of scope for the product MVP
-
-- Providers other than FRED.
-- Email notification.
-- Browser frontend or mobile application.
-- Immutable research snapshots and CSV datasets.
-- Forecasting, trading signals, and backtesting.
-- High-frequency market data.
-- Complex billing or organization accounts.
-
-These may be added only after the monitoring workflow is complete and reliable.
+- Arbitrary websites, PDFs, images, and proprietary databases.
+- Survey microdata and row-level confidential data.
+- Arbitrary user-submitted Python code.
+- Statistical modeling or causal inference.
+- Automatic imputation without an explicit recipe rule.
+- A universal ontology for every research discipline.
+- More than the initial supported providers.
+- AI-generated builds without human review.
+- Full point-in-time backtesting.
 
 ## 11. Success measures
 
-- Duplicate versions from identical input: zero.
-- Duplicate logical notifications during retry testing: zero.
-- Fixture classifications correct across all tested cases.
-- Successful webhooks delivered once under normal operation.
-- Failed webhook attempts visible and safely replayable.
-- Stale watched series detectable through metrics.
-- A new developer can run the complete local demonstration from the README.
+- A documented example dataset can be built from a clean clone.
+- Repeating an identical build yields the same checksum.
+- Every output variable has source and transformation lineage.
+- Duplicate entity-period keys are either resolved by an explicit rule or block the build.
+- Missing coverage is visible rather than silently removed.
+- A researcher can refresh a saved recipe without rewriting collection and cleaning code.

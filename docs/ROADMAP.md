@@ -1,264 +1,273 @@
-# MacroMonitor Phased Build and Commit Plan
+# Research Data Builder Phased Build and Commit Plan
 
 ## How we will work
 
-Every phase ends with working behavior, tests, and updated documentation. We will commit each coherent engineering result and push regularly; phases 1, 4, 7, and 8 are portfolio checkpoints, not the only times code reaches GitHub.
+Every phase ends with working behavior, tests, updated documentation, and a concrete demonstration. We commit each coherent engineering outcome and push regularly. Milestone phases are moments for README polish, demonstrations, and releases—not the only times code reaches GitHub.
 
-Good commits describe an outcome:
+## Phase 0: Define the useful product
+
+**Status:** complete.
+
+**Goal:** narrow the idea to reproducible research-dataset construction from supported public APIs.
+
+Decisions:
+
+- The product is not a universal downloader.
+- The first providers are FRED and World Bank.
+- Value comes from harmonization, validation, provenance, and reproducibility.
+- PostgreSQL stores workflow state and lineage; Parquet/files hold analytical artifacts.
+- AI assistance is optional and cannot replace deterministic recipes.
+
+Commit:
+
+1. `docs: pivot product to reproducible research datasets`
+
+Exit condition: a researcher can understand what time the tool saves and what appears in the final export bundle.
+
+## Phase 1: Professional service foundation
+
+**Status:** complete.
+
+Delivered:
+
+- FastAPI application with liveness and OpenAPI.
+- Typed environment configuration.
+- Structured JSON logging.
+- Locked development and runtime dependencies.
+- Ruff, Mypy, pytest, and coverage enforcement.
+- Dockerfile and Compose PostgreSQL stack.
+- GitHub Actions Python and container validation.
+
+Representative commits:
 
 ```text
-feat: classify revised economic observations
-test: verify duplicate ingestion remains idempotent
-feat: retry failed webhook deliveries
+chore: initialize FastAPI project and developer tooling
+feat: add health endpoint and environment settings
+build: add containerized local development stack
+ci: validate formatting types and tests
 ```
 
-We will not create artificial commits merely to increase the commit count.
+## Phase 2: Provider-data and provenance foundation
 
-## Phase 0: Align the product
+**Status:** complete.
 
-**Goal:** define MacroMonitor as a monitoring and notification product.
+Delivered:
+
+- Async SQLAlchemy database lifecycle and readiness.
+- Alembic migration system.
+- Provider-series metadata.
+- Retrieval/synchronization audit records.
+- Append-only decimal-safe observation versions.
+- Source-change events and deterministic uniqueness keys.
+- Transaction-controlled repositories.
+- PostgreSQL constraint, ordering, precision, and rollback tests.
+- Migration drift and round-trip checks in CI.
+
+The current schema is not the final product schema. It is the provider-input history under future dataset builds.
+
+## Phase 3: Build the provider connector framework
+
+**Goal:** retrieve FRED and World Bank data through one tested contract.
 
 Deliverables:
 
-- One-sentence product pitch.
-- Monitoring-focused requirements.
-- Architecture centered on watchlists, scheduled ingestion, and webhooks.
-- Separation between the product MVP, production deployment, and optional research features.
-
-Planned commit:
-
-1. `docs: refocus product on economic monitoring and alerts`
-
-Exit condition: a recruiter can understand the product in 30 seconds.
-
-## Phase 1: Create a professional service skeleton
-
-**Goal:** boot a small, tested FastAPI application locally.
-
-Deliverables:
-
-- Python project and locked dependency configuration.
-- FastAPI application with `/health`.
-- Typed settings loaded from environment variables.
-- Structured logging foundation.
-- Formatting, linting, typing, and pytest configuration.
-- Dockerfile and Docker Compose PostgreSQL service.
-- GitHub Actions validation workflow.
-- `.env.example` without real credentials.
+- Provider protocol and capability metadata.
+- Normalized indicator and observation domain objects.
+- Shared HTTP timeout, retry, pagination, and error handling.
+- FRED metadata/search and observation connector.
+- World Bank indicator/entity and observation connector.
+- Decimal, date, missing-value, unit, and frequency normalization.
+- Deterministic fixtures and connector contract tests.
+- Provider catalog refresh service.
 
 Likely commits:
 
-1. `chore: initialize FastAPI project and developer tooling`
-2. `feat: add health endpoint and environment settings`
-3. `build: add containerized local development stack`
-4. `ci: validate formatting types and tests`
+1. `feat: define provider connector contract`
+2. `feat: add shared provider HTTP policies`
+3. `feat: implement FRED indicator connector`
+4. `feat: implement World Bank indicator connector`
+5. `feat: normalize provider observations and metadata`
+6. `test: verify connectors with deterministic fixtures`
+7. `docs: document provider capabilities and limitations`
 
-Demo: clone the repository, start the stack, and receive a healthy API response.
+Demo: request equivalent indicator metadata and normalized observations from two fixture providers without exposing their original response formats to the rest of the application.
 
-**Portfolio checkpoint:** polish setup instructions and capture the first working API screenshot.
+## Phase 4: Add versioned dataset recipes and build planning
 
-## Phase 2: Design and persist economic history
-
-**Goal:** build the append-only database foundation without relying on a live provider.
+**Goal:** turn a research question into a validated, immutable build plan.
 
 Deliverables:
 
-- Domain types for series, observations, versions, sync runs, and change events.
-- SQLAlchemy models and Alembic migrations.
-- Decimal-safe value representation.
-- Constraints protecting version identity and append-only history.
-- Repository queries for current values and revision history.
-- PostgreSQL integration tests.
+- Dataset recipe, recipe-version, variable, and transformation schema.
+- Recipe YAML/JSON import and export.
+- Draft validation and immutable version freezing.
+- Provider input resolution.
+- Deterministic build identity.
+- Build-run and build-input records.
+- Recipe and build API endpoints.
+- Migration and repository tests.
 
 Likely commits:
 
-1. `feat: model economic series and observation versions`
-2. `feat: add sync run and change event schema`
-3. `feat: implement revision history repositories`
-4. `test: verify uniqueness transactions and version history`
+1. `feat: model dataset recipes and immutable versions`
+2. `feat: validate variables entities dates and join rules`
+3. `feat: import and export recipe YAML`
+4. `feat: resolve provider inputs for recipe versions`
+5. `feat: create deterministic build plans`
+6. `feat: expose recipe and build APIs`
+7. `test: verify recipe versioning and build identity`
 
-Demo: load two fixture vintages and query the complete history of one period.
+Demo: create the European macro-panel recipe, validate it, freeze a version, and inspect its resolved provider requests.
 
-## Phase 3: Integrate FRED behind a provider interface
+## Phase 5: Build the harmonization and transformation engine
 
-**Goal:** retrieve and normalize economic data without coupling the system to FRED response formats.
+**Goal:** turn normalized provider inputs into one correct research table.
 
 Deliverables:
 
-- Provider protocol.
-- FRED HTTP client with timeout, retry, and error mapping.
-- Normalization of decimals, dates, missing values, units, and frequency.
-- Fake provider and deterministic fixtures.
-- Tests that run without external network access.
+- Polars or DuckDB execution engine.
+- Canonical entity and period representations.
+- Versioned country-code mappings.
+- Long-form normalized staging data.
+- Explicit rename, filter, lag, difference, percent-change, scaling, and aggregation operations.
+- Frequency conversion with rejection of ambiguous cases.
+- Outer/inner join rules with unmatched-key reporting.
+- Stable column types and ordering.
+- Bounded data preview.
 
 Likely commits:
 
-1. `feat: define economic data provider contract`
-2. `feat: implement FRED series and observation client`
-3. `test: add deterministic provider fixtures`
+1. `build: add analytical dataframe engine`
+2. `feat: harmonize entity and period identifiers`
+3. `feat: execute deterministic transformation steps`
+4. `feat: add explicit frequency conversion rules`
+5. `feat: join variables with unmatched-key reporting`
+6. `feat: expose bounded build previews`
+7. `test: cover transformations joins and null semantics`
 
-Demo: fetch and normalize one configured series while the full test suite remains offline.
+Demo: combine FRED and World Bank fixtures into one four-country annual panel and explain every unmatched row.
 
-## Phase 4: Build the synchronization and revision engine
+## Phase 6: Add validation, provenance, and export bundles
 
-**Goal:** reliably convert provider responses into version history and change events.
+**Goal:** deliver the first genuinely useful local product.
 
 Deliverables:
 
-- `new`, `revised`, `unchanged`, `removed`, and `missing` classifications.
-- Metadata-change detection.
-- Atomic persistence of versions, events, and sync status.
-- Idempotency for repeated input.
-- Per-series concurrency control.
-- Failure-state logging and rollback tests.
+- Coverage, duplicate-key, type, range, and missing-value validation.
+- Recipe-defined warning and error rules.
+- Source-to-output column lineage.
+- Canonical dataset serialization and SHA-256 checksum.
+- CSV and Parquet exports.
+- Generated codebook and provider citations.
+- Machine-readable manifest.
+- Human-readable validation report.
+- Rebuild comparison showing changed inputs and outputs.
+- End-to-end fixture build.
 
 Likely commits:
 
-1. `feat: classify economic observation changes`
-2. `feat: persist synchronization results atomically`
-3. `feat: make repeated synchronization idempotent`
-4. `feat: prevent concurrent syncs for one series`
-5. `test: cover revisions removals failures and rollback`
+1. `feat: validate coverage keys types and ranges`
+2. `feat: record source-to-output lineage`
+3. `feat: export deterministic CSV and Parquet`
+4. `feat: generate codebook manifest and citations`
+5. `feat: compare dataset rebuilds`
+6. `test: verify reproducible end-to-end builds`
+7. `docs: publish complete research dataset example`
 
-Demo: process two fixture releases, display a new observation and revision, then repeat the job with zero duplicates.
+Demo:
 
-**Portfolio checkpoint:** record the core revision demo and document the key database and idempotency decisions.
+```text
+recipe
+→ provider fixtures
+→ harmonized panel
+→ validation report
+→ data.csv + data.parquet
+→ codebook + manifest + citations
+→ repeat build with identical checksum
+```
 
-## Phase 5: Expose the core API and watchlists
+**Local product MVP:** tag `v0.1.0`.
 
-**Goal:** allow clients to configure monitoring and inspect results through HTTP.
+**Portfolio checkpoint:** record the full workflow and publish a sample research bundle.
+
+## Phase 7: Add multi-user workflows and asynchronous builds
+
+**Goal:** make long-running builds safe and usable as a hosted application.
 
 Deliverables:
 
-- Series catalog endpoints.
-- Manual sync endpoint.
-- Sync-run and revision-history endpoints.
-- Watchlist CRUD and series membership.
-- Watchlist event feed.
-- Validation, cursor pagination, consistent errors, and OpenAPI examples.
-- API integration tests.
+- Authentication and recipe/build ownership.
+- Background build queue and workers.
+- Job progress and cancellation policy.
+- Idempotent job handling and terminal failure states.
+- Provider input cache and refresh policies.
+- Authorized artifact downloads.
+- Small browser interface for recipe creation, build status, preview, validation, and exports.
+- Audit history and per-user limits.
 
 Likely commits:
 
-1. `feat: expose tracked series and sync history`
-2. `feat: add watchlist management`
-3. `feat: expose watchlist change events`
-4. `test: cover API validation pagination and errors`
-5. `docs: add core API walkthrough`
+1. `feat: add authenticated users and ownership`
+2. `feat: queue dataset builds outside API requests`
+3. `feat: report progress failures and retries`
+4. `feat: cache provider inputs by policy`
+5. `feat: authorize export downloads`
+6. `feat: add research build workflow UI`
+7. `test: cover isolation duplicate delivery and failure recovery`
 
-Demo: create a watchlist and inspect its revision event using only API calls.
+Demo: two users create builds concurrently without viewing each other's private recipes or exports.
 
-## Phase 6: Add scheduled asynchronous ingestion
+## Phase 8: Deploy and operate on AWS
 
-**Goal:** monitor watched series automatically without blocking API requests.
-
-Deliverables:
-
-- Background job abstraction with a simple local queue implementation.
-- Schedule calculation for active watched series.
-- Worker that invokes the existing synchronization service.
-- Deterministic job identity and safe redelivery.
-- Retry, timeout, and dead-letter behavior.
-- Job-status and series-staleness visibility.
-
-The local implementation preserves the boundaries later used by EventBridge and SQS without requiring AWS during development.
-
-Likely commits:
-
-1. `feat: enqueue watched series synchronization jobs`
-2. `feat: process ingestion jobs in a background worker`
-3. `feat: retry and dead-letter failed ingestion jobs`
-4. `test: prove safe duplicate job delivery`
-5. `docs: add scheduled monitoring demonstration`
-
-Demo: a schedule creates a job, a worker detects a fixture revision, and redelivery creates no duplicate event.
-
-## Phase 7: Deliver reliable webhook notifications
-
-**Goal:** complete the local MacroMonitor product.
+**Goal:** run the product reliably in the cloud.
 
 Deliverables:
 
-- Webhook subscription endpoints.
-- Test-event validation.
-- HMAC-signed event payloads.
-- Notification queue and delivery worker.
-- Exponential-backoff retries.
-- Delivery-attempt audit history.
-- Dead-letter state and safe manual replay.
-- End-to-end test from economic revision to webhook receipt.
-
-Likely commits:
-
-1. `feat: add webhook subscriptions to watchlists`
-2. `feat: enqueue signed change notifications`
-3. `feat: deliver webhooks in a background worker`
-4. `feat: retry audit and dead-letter failed deliveries`
-5. `feat: safely replay failed webhook deliveries`
-6. `test: cover the complete monitoring workflow`
-7. `docs: add MacroMonitor local demo`
-
-Demo: a watched revision produces a signed webhook; a failing receiver is retried, audited, dead-lettered, and successfully replayed.
-
-**Product MVP release:** tag `v0.1.0`.
-
-**Portfolio checkpoint:** publish a short recorded demonstration, architecture diagram, measured test count, and local performance figures.
-
-## Phase 8: Secure, deploy, and operate on AWS
-
-**Goal:** turn the local product into a credible public production service.
-
-Deliverables:
-
-- User authentication and ownership authorization.
-- Production rate limits and secure webhook-secret handling.
-- API and worker container images in ECR.
-- ECS Fargate services.
+- Infrastructure as code.
+- API and worker images in ECR.
+- ECS Fargate API and build workers.
 - RDS PostgreSQL with backups.
-- EventBridge scheduling.
-- SQS ingestion and notification queues with dead-letter queues.
+- SQS build queue and dead-letter queue.
+- S3 artifact storage with authorized access.
+- Secrets Manager provider credentials.
 - CloudWatch logs, metrics, dashboards, and alarms.
-- Secrets Manager integration.
 - GitHub Actions deployment workflow.
-- Infrastructure as code, cost notes, recovery procedure, and runbook.
+- Recovery, replay, cost, and operational runbooks.
 
 Likely commits:
 
-1. `feat: add authentication and resource ownership`
-2. `infra: provision network database queues and secrets`
-3. `infra: deploy API ingestion and delivery services`
-4. `infra: schedule monitoring and configure dead-letter queues`
-5. `ops: add metrics alarms backups and runbook`
-6. `ci: automate production image build and deployment`
-7. `docs: publish production architecture and live demo`
+1. `infra: provision network database storage queues and secrets`
+2. `infra: deploy API and build worker services`
+3. `feat: store and authorize S3 research artifacts`
+4. `ops: add metrics alarms backups and runbooks`
+5. `ci: automate production deployment`
+6. `docs: publish production architecture and live demo`
 
-Demo: a real scheduled FRED check produces an auditable change event and delivers a webhook from the deployed system.
+Demo: submit a real build, watch asynchronous progress, and download a verified export bundle from the deployed service.
 
-**Production release:** tag `v1.0.0`.
-
-**Portfolio checkpoint:** include the live API, production architecture, operational metrics, and failure-recovery demonstration.
+**Production milestone:** tag `v1.0.0`.
 
 ## Phase 9: Optional extensions
 
-Only begin these after the monitoring workflow is reliable:
+Only begin after the core workflow is reliable:
 
-- Email notification.
-- Point-in-time research queries.
-- Immutable datasets and checksums.
-- Revision analytics dashboard.
-- BEA or World Bank provider.
-- Release-calendar awareness.
-- Quantitative revision-bias or look-ahead-bias analysis.
+- OECD, Eurostat, BLS, or BEA connectors.
+- ALFRED point-in-time and vintage-aware recipes.
+- Research-dataset comparison dashboard.
+- Collaboration and public recipe templates.
+- Scheduled refreshes.
+- AI-assisted indicator search and draft recipe creation.
+- Natural-language explanations of validation and lineage.
 
-Each extension requires a separate issue, measurable user value, and its own commit series.
+AI remains an assistant. The approved recipe, connector responses, deterministic engine, and provenance records remain authoritative.
 
 ## Milestones and Git workflow
 
 | Point | Result | Suggested tag |
 |---|---|---|
-| Phase 1 | Working API foundation | optional `v0.0.1` |
-| Phase 4 | Complete revision engine | optional `v0.0.2` |
-| Phase 7 | Complete local product MVP | `v0.1.0` |
-| Phase 8 | Secure deployed production service | `v1.0.0` |
+| Phase 3 | Two-provider normalized connector layer | optional `v0.0.3` |
+| Phase 4 | Versioned recipe and build planner | optional `v0.0.4` |
+| Phase 6 | Complete local research-data MVP | `v0.1.0` |
+| Phase 8 | Secure deployed production product | `v1.0.0` |
 
-Commit after every meaningful, tested change. Push at the end of each completed work session or feature. Milestone phases are for README polish, demonstrations, and releases—not the only times we push.
+Commit after every meaningful, tested change. Push after completed features or work sessions. Milestones are for demonstrations and releases, not giant commits.

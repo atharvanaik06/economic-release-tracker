@@ -1,124 +1,132 @@
 # Database Design and Migrations
 
-## Purpose
+## PostgreSQL's role
 
-MacroMonitor must preserve economic values that are later revised. Observation rows are therefore append-only: a new provider value creates a new version instead of updating or deleting the earlier value.
+PostgreSQL is the system of record for research workflow state:
 
-## Phase 2 schema
+- provider and indicator metadata;
+- source retrievals and observation versions;
+- dataset recipes and immutable recipe versions;
+- build status and exact build inputs;
+- transformations and validation results;
+- source-to-output lineage;
+- export locations, schemas, and checksums;
+- users and ownership in later phases.
+
+Large raw responses and generated CSV/Parquet/report files belong in local artifact storage for the MVP and object storage in production. Polars or DuckDB performs analytical transformations. PostgreSQL records what happened and keeps relationships consistent.
+
+## Implemented Phase 2 schema
+
+The current schema predates dataset recipes but remains useful as the provider-input and provenance foundation.
 
 ```mermaid
 erDiagram
-    SERIES ||--o{ SYNC_RUNS : has
+    SERIES ||--o{ SYNC_RUNS : retrieved_by
     SERIES ||--o{ OBSERVATION_VERSIONS : contains
     SERIES ||--o{ CHANGE_EVENTS : emits
     SYNC_RUNS ||--o{ OBSERVATION_VERSIONS : discovers
     SYNC_RUNS ||--o{ CHANGE_EVENTS : produces
     OBSERVATION_VERSIONS o|--o{ CHANGE_EVENTS : previous_version
     OBSERVATION_VERSIONS o|--o{ CHANGE_EVENTS : new_version
-
-    SERIES {
-        uuid id PK
-        string provider
-        string provider_series_id
-        string title
-        string units
-        string frequency
-        boolean active
-    }
-
-    SYNC_RUNS {
-        uuid id PK
-        uuid series_id FK
-        string status
-        timestamp started_at
-        timestamp finished_at
-        integer new_count
-        integer revised_count
-    }
-
-    OBSERVATION_VERSIONS {
-        uuid id PK
-        uuid series_id FK
-        uuid sync_run_id FK
-        date observation_date
-        numeric value
-        boolean is_missing
-        timestamp first_observed_at
-        string content_fingerprint UK
-    }
-
-    CHANGE_EVENTS {
-        uuid id PK
-        uuid series_id FK
-        uuid sync_run_id FK
-        string change_type
-        uuid previous_version_id FK
-        uuid new_version_id FK
-        numeric change_amount
-        string deterministic_key UK
-    }
 ```
 
-## Important invariants
+### `series`
+
+Normalized provider-indicator metadata: provider identity, title, units, frequency, provider metadata, active state, and freshness.
+
+This table will eventually be named or exposed as the provider indicator catalog, but the existing schema does not need to be discarded.
+
+### `sync_runs`
+
+An audit record for one provider retrieval attempt. It records status, timing, result counts, and sanitized failures.
+
+### `observation_versions`
+
+Append-only normalized provider values. Each record includes indicator, period, value or missing state, provider vintage fields, first-observed timestamp, source retrieval, and a deterministic content fingerprint.
+
+Keeping versions allows a future dataset build to reference the exact input it used instead of whatever value happens to be current later.
+
+### `change_events`
+
+Immutable differences between provider input versions. They support source-refresh auditing and later rebuild explanations such as:
+
+```text
+Build B differs because 14 provider observations changed after Build A.
+```
+
+## Planned product schema
+
+Later migrations add:
+
+```text
+dataset_recipes
+└── recipe_versions
+    ├── recipe_variables
+    ├── transformation_steps
+    └── build_runs
+        ├── build_inputs
+        ├── validation_results
+        └── exports
+```
+
+### Dataset recipes and versions
+
+Draft recipes are editable. Recipe versions are immutable and contain the complete validated build definition.
+
+### Build runs and inputs
+
+A build references one recipe version plus the exact provider retrievals or observation versions used. Its deterministic identity prevents duplicate logical builds.
+
+### Validation and lineage
+
+Validation records remain queryable rather than existing only in a report file. Lineage links output columns to source indicators and ordered transformations.
+
+### Exports
+
+Export records store format, artifact location, row count, schema, file size, and checksum. The artifact itself is not forced into PostgreSQL.
+
+## Existing invariants
 
 ### Provider identity
 
-`series(provider, provider_series_id)` is unique. The same FRED series cannot be registered twice.
+`series(provider, provider_series_id)` is unique.
 
-### Append-only versions
+### Append-only source versions
 
-Every observation version has a deterministic content fingerprint. The database rejects a repeated fingerprint, while different values for the same series and period remain valid separate rows.
+Every observation version has a unique deterministic fingerprint. Identical content cannot be inserted twice, while a changed value for the same indicator and period becomes a separate version.
 
 ### Missing values
-
-The schema enforces:
 
 ```text
 is_missing = true  -> value is null
 is_missing = false -> value is not null
 ```
 
-A provider's missing marker is never converted to zero.
+Missing source data is never converted to zero.
 
 ### Decimal precision
 
-Economic values and revision amounts use `NUMERIC(30, 10)` in PostgreSQL and `Decimal` in Python. This avoids false revisions caused by binary floating-point rounding.
+Provider values use `NUMERIC(30, 10)` in PostgreSQL and `Decimal` in Python.
 
-### Sync state
+### Retrieval state
 
-A running sync has no finish time. A succeeded or failed sync must have one. All classification counts must be nonnegative.
-
-### Immutable change identity
-
-Each meaningful change has a deterministic key. This is the future foundation for idempotent event and notification processing.
+A running retrieval has no finish time. A succeeded or failed retrieval must have one. Classification counts cannot be negative.
 
 ## Transaction ownership
 
-Repositories call `flush()` so IDs and constraints are available immediately, but they never call `commit()`. The application service owns the transaction boundary.
+Repositories call `flush()` to obtain IDs and enforce constraints but never call `commit()`. Application services own transaction boundaries.
 
-The future synchronization service will perform this as one transaction:
+A future successful build will require coordinated short transactions:
 
 ```text
-new observation versions
-        +
-change events
-        +
-sync-run final state and counts
-        +
-series metadata update
+freeze recipe version
+record resolved input identity
+record build state
+record completed validation and export metadata
+mark build successful only after required artifacts exist
 ```
 
-If any write fails, the entire transaction rolls back.
-
-## Query-oriented indexes
-
-- Sync history by series and start time.
-- Observation history by series, economic period, and first-observed time.
-- Change history by series and occurrence time.
-- Unique observation fingerprint.
-- Unique change-event deterministic key.
-
-Indexes will be changed only in response to measured query plans and latency.
+External HTTP calls and dataframe work do not hold database transactions open.
 
 ## Migration workflow
 
@@ -128,22 +136,22 @@ Apply migrations:
 alembic upgrade head
 ```
 
-Inspect the revision:
+Inspect the active revision:
 
 ```bash
 alembic current
 ```
 
-Check whether ORM metadata differs from the migrated schema:
+Check ORM/schema drift:
 
 ```bash
 alembic check
 ```
 
-Generate reviewable SQL without modifying a database:
+Generate reviewable SQL without changing a database:
 
 ```bash
 alembic upgrade head --sql
 ```
 
-CI starts an empty PostgreSQL database, applies the full migration chain, checks for drift, runs integration tests, downgrades to the base revision, and upgrades again.
+CI starts an empty PostgreSQL database, applies the migration chain, checks for drift, runs integration tests, downgrades to the base revision, and upgrades again.

@@ -1,60 +1,66 @@
-# MacroMonitor
+# Research Data Builder
 
 [![CI](https://github.com/atharvanaik06/economic-release-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/atharvanaik06/economic-release-tracker/actions/workflows/ci.yml)
 
-MacroMonitor is a backend service that monitors selected economic indicators, detects new releases and historical revisions, and sends reliable webhook notifications describing exactly what changed.
+Research Data Builder turns public economic APIs into validated, documented, and reproducible research datasets.
 
-The GitHub repository remains named `economic-release-tracker`; **MacroMonitor** is the product name.
+## The problem
 
-## The idea in plain English
-
-MacroMonitor works like a price tracker for government economic data:
-
-1. A user selects indicators such as CPI, GDP, unemployment, or interest rates.
-2. Scheduled workers retrieve the latest data from FRED.
-3. The service compares the response with its append-only PostgreSQL history.
-4. It identifies new, revised, removed, or missing observations.
-5. It stores an auditable change event.
-6. It sends a signed webhook to subscribed applications.
-
-Example:
+A researcher studying growth, inflation, and unemployment across countries may spend more time collecting and cleaning data than analyzing it:
 
 ```text
-New observation:
-October 2026: 326.4
-
-Revisions:
-August 2026:    324.1 -> 324.0
-September 2026: 325.3 -> 325.5
+Find indicators across providers
+→ download separate files
+→ normalize country and date identifiers
+→ reconcile units and frequencies
+→ join tables
+→ investigate missing observations
+→ document every source and transformation
+→ repeat the work when data changes
 ```
 
-FRED provides the underlying data. MacroMonitor provides the monitoring, comparison, history, and notification workflow.
+Research Data Builder converts that work into a saved dataset recipe.
 
-## Product MVP
+## The intended workflow
 
-The first complete product will support:
+1. Select supported providers, indicators, countries, and dates.
+2. Review units, frequencies, and proposed transformations.
+3. Save a versioned recipe.
+4. Run a deterministic dataset build.
+5. Inspect missing values, coverage, and validation warnings.
+6. Export a research bundle containing data, a codebook, provenance, citations, and a checksum.
+7. Rebuild or refresh the dataset later from the same recipe.
 
-- FRED economic series;
-- user watchlists;
-- manual and scheduled synchronization;
-- append-only observation versions;
-- new, revised, unchanged, removed, and missing classifications;
-- release and revision history through FastAPI;
-- webhook subscriptions;
-- asynchronous delivery with retries and attempt history;
-- idempotent processing so retries do not duplicate versions or notifications;
-- deterministic fixtures and automated tests.
+## First useful product
 
-Authentication and AWS deployment are added before the public production release. Email, extra data providers, a browser frontend, point-in-time research snapshots, and quantitative analysis are optional extensions.
+The local MVP will support:
 
-## Technology direction
+- FRED and World Bank provider connectors;
+- a common normalized observation schema;
+- versioned YAML/JSON dataset recipes;
+- country, date, frequency, and variable harmonization;
+- explicit transformations and missing-value policies;
+- deterministic builds using Polars or DuckDB;
+- coverage and data-quality validation;
+- CSV and Parquet exports;
+- generated codebook, manifest, citations, and SHA-256 checksum;
+- exact input and transformation lineage;
+- fixture-driven tests that do not depend on live provider availability.
 
-- FastAPI and Pydantic
-- PostgreSQL, SQLAlchemy, and Alembic
-- Background workers and a queue
-- Docker Compose for local development
-- AWS ECS Fargate, RDS, SQS, EventBridge, ECR, and CloudWatch for production
-- pytest and GitHub Actions
+Authentication, a browser interface, background queues, cloud storage, additional providers, vintage-aware backtesting, and AI-assisted recipe creation are later phases.
+
+## Current foundation
+
+Phases 1 and 2 are complete:
+
+- FastAPI application, validated settings, and structured logging;
+- Docker and PostgreSQL local stack;
+- GitHub Actions quality and container checks;
+- async SQLAlchemy repositories and Alembic migrations;
+- provider-series metadata, synchronization audit records, append-only source observations, and source-change events;
+- PostgreSQL integration tests for decimal precision, constraints, ordering, and rollback.
+
+These existing tables form the provider-data and provenance foundation. Dataset recipes, builds, validation results, and export metadata are added in later phases.
 
 ## Quick start
 
@@ -64,7 +70,7 @@ Requirements: Python 3.12 or newer. Docker is optional for the containerized wor
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.lock
 cp .env.example .env
-.venv/bin/uvicorn macromonitor.main:app --app-dir src --reload
+.venv/bin/uvicorn research_data_builder.main:app --app-dir src --reload
 ```
 
 Then open:
@@ -80,7 +86,7 @@ Run all local quality checks:
 .venv/bin/ruff format --check .
 .venv/bin/ruff check .
 .venv/bin/mypy src tests
-.venv/bin/pytest --cov=macromonitor --cov-report=term-missing
+.venv/bin/pytest --cov=research_data_builder --cov-report=term-missing
 ```
 
 Or start the API and PostgreSQL with Docker:
@@ -89,18 +95,14 @@ Or start the API and PostgreSQL with Docker:
 docker compose up --build
 ```
 
-See the [development guide](docs/DEVELOPMENT.md) for configuration, locked dependency installation, and contributor commands.
-
 ## Project documents
 
 - [Product requirements](docs/REQUIREMENTS.md)
 - [System design](docs/SYSTEM_DESIGN.md)
 - [Phased build and commit plan](docs/ROADMAP.md)
-- [Development guide](docs/DEVELOPMENT.md)
 - [Database design and migrations](docs/DATABASE.md)
+- [Development guide](docs/DEVELOPMENT.md)
 
 ## Current status
 
-Phase 2 complete: FastAPI foundation plus append-only PostgreSQL history, Alembic migrations, transactional repositories, readiness checks, and integration tests.
-
-Next: Phase 3 will integrate FRED through a provider interface and deterministic response fixtures.
+Product direction aligned around reproducible dataset construction. The next implementation phase introduces the provider connector contract plus FRED and World Bank integrations.
