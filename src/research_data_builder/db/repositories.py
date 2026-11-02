@@ -33,6 +33,15 @@ class SeriesInput:
 
 
 @dataclass(frozen=True, slots=True)
+class SeriesUpsertResult:
+    """Outcome of idempotently writing one provider catalog entry."""
+
+    series: Series
+    created: bool
+    updated: bool
+
+
+@dataclass(frozen=True, slots=True)
 class ObservationVersionInput:
     """Values required to append an observation version."""
 
@@ -101,6 +110,25 @@ class SeriesRepository:
             Series.provider_series_id == provider_series_id,
         )
         return await self.session.scalar(statement)
+
+    async def upsert(self, values: SeriesInput) -> SeriesUpsertResult:
+        """Create, update, or leave unchanged one normalized provider series."""
+        existing = await self.get_by_provider_id(values.provider, values.provider_series_id)
+        if existing is None:
+            created = await self.create(values)
+            return SeriesUpsertResult(series=created, created=True, updated=False)
+
+        if existing.metadata_fingerprint == values.metadata_fingerprint:
+            return SeriesUpsertResult(series=existing, created=False, updated=False)
+
+        existing.title = values.title
+        existing.units = values.units
+        existing.frequency = values.frequency
+        existing.provider_metadata = values.provider_metadata
+        existing.metadata_fingerprint = values.metadata_fingerprint
+        existing.active = True
+        await self.session.flush()
+        return SeriesUpsertResult(series=existing, created=False, updated=True)
 
 
 class SyncRunRepository:

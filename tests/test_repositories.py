@@ -56,6 +56,46 @@ def test_series_repository_creates_and_finds_series() -> None:
     asyncio.run(scenario())
 
 
+def test_series_repository_upsert_tracks_created_updated_and_unchanged() -> None:
+    async def scenario() -> None:
+        session = mock_session()
+        repository = SeriesRepository(session)
+        original = SeriesInput(
+            provider="fred",
+            provider_series_id="GDP",
+            title="Gross Domestic Product",
+            units="Billions of Dollars",
+            frequency="quarterly",
+            metadata_fingerprint="a" * 64,
+        )
+
+        session.scalar.return_value = None
+        created = await repository.upsert(original)
+        assert created.created is True
+        assert created.updated is False
+
+        session.scalar.return_value = created.series
+        unchanged = await repository.upsert(original)
+        assert unchanged.created is False
+        assert unchanged.updated is False
+
+        changed = SeriesInput(
+            provider="fred",
+            provider_series_id="GDP",
+            title="Gross Domestic Product, Revised Metadata",
+            units="Billions of Dollars",
+            frequency="quarterly",
+            metadata_fingerprint="b" * 64,
+        )
+        updated = await repository.upsert(changed)
+        assert updated.updated is True
+        assert updated.series.title == "Gross Domestic Product, Revised Metadata"
+        assert updated.series.metadata_fingerprint == "b" * 64
+        assert session.flush.await_count == 2
+
+    asyncio.run(scenario())
+
+
 def test_sync_run_repository_records_success_and_failure() -> None:
     async def scenario() -> None:
         session = mock_session()
