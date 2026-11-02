@@ -1,5 +1,7 @@
 # MacroMonitor
 
+[![CI](https://github.com/atharvanaik06/economic-release-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/atharvanaik06/economic-release-tracker/actions/workflows/ci.yml)
+
 MacroMonitor is a backend service that monitors selected economic indicators, detects new releases and historical revisions, and sends reliable webhook notifications describing exactly what changed.
 
 The GitHub repository remains named `economic-release-tracker`; **MacroMonitor** is the product name.
@@ -54,12 +56,49 @@ Authentication and AWS deployment are added before the public production release
 - AWS ECS Fargate, RDS, SQS, EventBridge, ECR, and CloudWatch for production
 - pytest and GitHub Actions
 
+## Quick start
+
+Requirements: Python 3.12 or newer. Docker is optional for the containerized workflow.
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.lock
+cp .env.example .env
+.venv/bin/uvicorn macromonitor.main:app --app-dir src --reload
+```
+
+Then open:
+
+- API health: <http://localhost:8000/health>
+- Interactive API documentation: <http://localhost:8000/docs>
+- OpenAPI document: <http://localhost:8000/openapi.json>
+
+Run all local quality checks:
+
+```bash
+.venv/bin/ruff format --check .
+.venv/bin/ruff check .
+.venv/bin/mypy src tests
+.venv/bin/pytest --cov=macromonitor --cov-report=term-missing
+```
+
+Or start the API and PostgreSQL with Docker:
+
+```bash
+docker compose up --build
+```
+
+See the [development guide](docs/DEVELOPMENT.md) for configuration, locked dependency installation, and contributor commands.
+
 ## Project documents
 
 - [Product requirements](docs/REQUIREMENTS.md)
 - [System design](docs/SYSTEM_DESIGN.md)
 - [Phased build and commit plan](docs/ROADMAP.md)
+- [Development guide](docs/DEVELOPMENT.md)
 
 ## Current status
 
-Phase 0: product definition aligned around monitoring, watchlists, and reliable notifications.
+Phase 1 complete: FastAPI foundation, validated settings, structured logging, tests, containers, and continuous integration.
+
+Next: Phase 2 will introduce PostgreSQL models and migrations for append-only economic observation history.
