@@ -67,9 +67,11 @@ The current schema is not the final product schema. It is the provider-input his
 
 ## Phase 3: Build the provider connector framework
 
+**Status:** complete.
+
 **Goal:** retrieve FRED and World Bank data through one tested contract.
 
-Deliverables:
+Delivered:
 
 - Provider protocol and capability metadata.
 - Normalized indicator and observation domain objects.
@@ -79,6 +81,16 @@ Deliverables:
 - Decimal, date, missing-value, unit, and frequency normalization.
 - Deterministic fixtures and connector contract tests.
 - Provider catalog refresh service.
+
+Implementation notes:
+
+- FRED requires `RESEARCH_DATA_FRED_API_KEY`; World Bank is keyless.
+- Provider calls use configurable timeouts and at most three attempts by default.
+- Retries cover transport failures, HTTP 429, and retryable server failures.
+- FRED's `.` marker and World Bank's `null` become explicit missing observations.
+- Decimal values never pass through binary floating-point conversion.
+- Provider metadata refreshes use stable SHA-256 fingerprints.
+- Live provider APIs are deliberately excluded from CI; deterministic HTTP fixtures exercise the same connector code.
 
 Likely commits:
 

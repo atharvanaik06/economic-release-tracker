@@ -15,9 +15,11 @@ PostgreSQL is the system of record for research workflow state:
 
 Large raw responses and generated CSV/Parquet/report files belong in local artifact storage for the MVP and object storage in production. Polars or DuckDB performs analytical transformations. PostgreSQL records what happened and keeps relationships consistent.
 
-## Implemented Phase 2 schema
+## Implemented provider schema
 
-The current schema predates dataset recipes but remains useful as the provider-input and provenance foundation.
+The schema was introduced in Phase 2. Phase 3 now refreshes normalized connector metadata into
+`series` idempotently: new provider indicators are created, changed fingerprints update metadata,
+and identical fingerprints produce no write.
 
 ```mermaid
 erDiagram

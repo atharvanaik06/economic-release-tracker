@@ -51,13 +51,19 @@ Authentication, a browser interface, background queues, cloud storage, additiona
 
 ## Current foundation
 
-Phases 1 and 2 are complete:
+Phases 1 through 3 are complete:
 
 - FastAPI application, validated settings, and structured logging;
 - Docker and PostgreSQL local stack;
 - GitHub Actions quality and container checks;
 - async SQLAlchemy repositories and Alembic migrations;
 - provider-series metadata, synchronization audit records, append-only source observations, and source-change events;
+- a provider-neutral connector contract and capability registry;
+- FRED indicator search, metadata, and paginated observation normalization;
+- World Bank indicator search, entity catalog, and paginated multi-country observations;
+- shared HTTP timeouts, bounded retries, rate-limit handling, and typed failures;
+- idempotent provider catalog refresh with stable metadata fingerprints;
+- fixture-driven connector tests that never require live provider availability;
 - PostgreSQL integration tests for decimal precision, constraints, ordering, and rollback.
 
 These existing tables form the provider-data and provenance foundation. Dataset recipes, builds, validation results, and export metadata are added in later phases.
@@ -101,8 +107,9 @@ docker compose up --build
 - [System design](docs/SYSTEM_DESIGN.md)
 - [Phased build and commit plan](docs/ROADMAP.md)
 - [Database design and migrations](docs/DATABASE.md)
+- [Provider connectors](docs/PROVIDERS.md)
 - [Development guide](docs/DEVELOPMENT.md)
 
 ## Current status
 
-Product direction aligned around reproducible dataset construction. The next implementation phase introduces the provider connector contract plus FRED and World Bank integrations.
+The provider connector layer is complete. The next phase introduces versioned dataset recipes and deterministic build planning.

@@ -42,6 +42,9 @@ def configure_logging(level: str) -> None:
             },
             "root": {"handlers": ["default"], "level": level},
             "loggers": {
+                # httpx logs complete query strings at INFO; FRED credentials travel in one.
+                "httpx": {"handlers": ["default"], "level": "WARNING", "propagate": False},
+                "httpcore": {"handlers": ["default"], "level": "WARNING", "propagate": False},
                 "uvicorn.access": {"handlers": ["default"], "level": level, "propagate": False},
                 "uvicorn.error": {"handlers": ["default"], "level": level, "propagate": False},
             },

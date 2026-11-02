@@ -90,7 +90,9 @@ Settings use the `RESEARCH_DATA_` environment prefix.
 | `RESEARCH_DATA_LOG_LEVEL` | `INFO` | Python log level |
 | `RESEARCH_DATA_DATABASE_URL` | local PostgreSQL URL | Database connection string |
 | `RESEARCH_DATA_TEST_DATABASE_URL` | unset | Enables real PostgreSQL integration tests |
-| `RESEARCH_DATA_FRED_API_KEY` | unset | Reserved for the Phase 3 FRED connector |
+| `RESEARCH_DATA_FRED_API_KEY` | unset | Required for live FRED requests |
+| `RESEARCH_DATA_PROVIDER_HTTP_TIMEOUT_SECONDS` | `15` | Timeout for one provider request attempt |
+| `RESEARCH_DATA_PROVIDER_HTTP_MAX_ATTEMPTS` | `3` | Maximum attempts for transient provider failures |
 
 Copy `.env.example` to `.env` for local overrides. `.env` is ignored by Git. Never commit provider keys, passwords, or private research credentials.
 
@@ -137,3 +139,4 @@ The current foundation is considered healthy when:
 7. Alembic can upgrade an empty PostgreSQL database and reports no schema drift.
 8. PostgreSQL integration tests verify precision, uniqueness, ordering, and rollback.
 9. CI validates both Python quality checks and the container build.
+10. FRED and World Bank fixture contract tests pass without external network access.
