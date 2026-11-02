@@ -55,7 +55,30 @@ The Compose stack exposes:
 | API documentation | <http://localhost:8000/docs> |
 | PostgreSQL | `localhost:5432` |
 
-PostgreSQL is healthy and available but is not queried by the Phase 1 health endpoint. Database migrations and readiness checks arrive in Phase 2.
+The liveness route at `/health` does not query PostgreSQL. The readiness route at `/ready` returns `200` only when the database can execute a query.
+
+## Database migrations
+
+Start PostgreSQL and apply every migration from inside the application image:
+
+```bash
+docker compose up -d postgres
+docker compose run --rm api alembic upgrade head
+```
+
+Inspect the active revision:
+
+```bash
+docker compose run --rm api alembic current
+```
+
+Generate offline SQL for review without connecting to PostgreSQL:
+
+```bash
+.venv/bin/alembic upgrade head --sql
+```
+
+Schema changes must be represented by a reviewed Alembic revision. Do not modify a shared database manually.
 
 ## Configuration
 
@@ -66,6 +89,7 @@ Settings use the `MACROMONITOR_` environment prefix.
 | `MACROMONITOR_ENVIRONMENT` | `development` | `development`, `test`, or `production` |
 | `MACROMONITOR_LOG_LEVEL` | `INFO` | Python log level |
 | `MACROMONITOR_DATABASE_URL` | local PostgreSQL URL | Database connection string |
+| `MACROMONITOR_TEST_DATABASE_URL` | unset | Enables real PostgreSQL integration tests |
 | `MACROMONITOR_FRED_API_KEY` | unset | Reserved for Phase 3 FRED integration |
 
 Copy `.env.example` to `.env` for local overrides. `.env` is ignored by Git. Never commit provider keys, passwords, or webhook secrets.
@@ -89,6 +113,8 @@ Run the same quality gates used by CI:
 
 The coverage gate is configured at 90%. New functionality should include tests for success, validation, and failure behavior.
 
+Integration tests are skipped when `MACROMONITOR_TEST_DATABASE_URL` is unset. CI supplies a PostgreSQL service, applies the migration, checks for model/schema drift, runs the tests, and verifies downgrade/upgrade behavior.
+
 ## Dependency workflow
 
 - `pyproject.toml` declares supported dependency ranges and tool configuration.
@@ -98,9 +124,9 @@ The coverage gate is configured at 90%. New functionality should include tests f
 
 When dependencies intentionally change, regenerate and review both lock files, reinstall into a clean environment, and run the full quality suite.
 
-## Phase 1 verification
+## Current verification
 
-Phase 1 is considered complete when:
+The current foundation is considered healthy when:
 
 1. `/health` returns service metadata.
 2. `/docs` and `/openapi.json` are available.
@@ -108,4 +134,6 @@ Phase 1 is considered complete when:
 4. logs are emitted as structured JSON.
 5. formatting, linting, strict typing, and tests pass.
 6. the production package installs from the runtime lock.
-7. CI validates both Python quality checks and the container build.
+7. Alembic can upgrade an empty PostgreSQL database and reports no schema drift.
+8. PostgreSQL integration tests verify precision, uniqueness, ordering, and rollback.
+9. CI validates both Python quality checks and the container build.

@@ -70,6 +70,7 @@ cp .env.example .env
 Then open:
 
 - API health: <http://localhost:8000/health>
+- Dependency readiness: <http://localhost:8000/ready>
 - Interactive API documentation: <http://localhost:8000/docs>
 - OpenAPI document: <http://localhost:8000/openapi.json>
 
@@ -96,9 +97,10 @@ See the [development guide](docs/DEVELOPMENT.md) for configuration, locked depen
 - [System design](docs/SYSTEM_DESIGN.md)
 - [Phased build and commit plan](docs/ROADMAP.md)
 - [Development guide](docs/DEVELOPMENT.md)
+- [Database design and migrations](docs/DATABASE.md)
 
 ## Current status
 
-Phase 1 complete: FastAPI foundation, validated settings, structured logging, tests, containers, and continuous integration.
+Phase 2 complete: FastAPI foundation plus append-only PostgreSQL history, Alembic migrations, transactional repositories, readiness checks, and integration tests.
 
-Next: Phase 2 will introduce PostgreSQL models and migrations for append-only economic observation history.
+Next: Phase 3 will integrate FRED through a provider interface and deterministic response fixtures.
