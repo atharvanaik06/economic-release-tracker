@@ -30,6 +30,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 addopts = "--strict-config --strict-markers -ra"
+pythonpath = ["src"]
 testpaths = ["tests"]
 
 [tool.coverage.run]
