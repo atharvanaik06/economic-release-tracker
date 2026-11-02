@@ -1,207 +1,285 @@
-# Product Requirements
+# MacroMonitor Product Requirements
 
 ## 1. Product summary
 
-The Economic Release Tracker is a backend service for researchers, analysts, and developers who need to know how published economic data changes over time.
+MacroMonitor monitors economic indicators selected by users. It retrieves official data, compares each release with previously stored versions, records exactly what changed, and notifies subscribed applications through reliable webhooks.
 
-The product adds value on top of FRED by storing successive versions, calculating differences, and creating citable point-in-time snapshots. It is not intended to be a general replacement for FRED.
+It is not a replacement for FRED. Its value is the workflow FRED does not conveniently provide:
+
+- continuously monitor selected series;
+- detect new and revised observations;
+- preserve an audit history;
+- deliver structured change events;
+- retry and inspect failed notifications.
 
 ## 2. Problem, simplified
 
-Imagine that GDP for Q2 is first reported as `1.8%`. A month later it is changed to `1.6%` when Q3 is published.
-
-A normal data request usually shows only the newest numbers. Our service keeps both versions and reports:
+Economic values change after publication:
 
 ```text
-New value:     Q3 = 2.1%
-Revised value: Q2 = 1.8% -> 1.6%
+Previously stored data       Latest provider response
+August:    324.1             August:    324.0  -> revised
+September: 325.3             September: 325.5  -> revised
+                             October:   326.4  -> new
 ```
 
-That allows a researcher to prove which values were used in an older analysis and allows an analyst to see only what changed.
+Without MacroMonitor, an analyst must repeatedly inspect provider pages or compare downloads manually. With MacroMonitor, the user selects the series once and receives a structured event whenever something meaningful changes.
 
-## 3. Users and their needs
+## 3. Target users
 
-### Primary: economics students and researchers
+### Primary: analysts and data teams
 
-- Reconstruct the data available on a historical date.
-- Export the exact dataset used in an analysis.
-- Cite metadata and a checksum so the dataset can be verified.
+- Monitor important economic indicators in one place.
+- See only the observations that changed.
+- Retain an auditable release and revision history.
 
-### Secondary: economic and financial analysts
+### Secondary: application developers
 
-- Track a small set of important series.
-- See new observations and revisions without comparing tables manually.
+- Subscribe an application to machine-readable economic change events.
+- Receive signed webhook payloads.
+- Inspect delivery attempts and replay failed deliveries.
 
-### Later: application developers
+### Later: researchers and quantitative users
 
-- Consume consistent change events.
-- Receive webhook notifications when watched series change.
+- Analyze revision patterns.
+- Reconstruct point-in-time datasets.
+- Avoid look-ahead bias in historical analysis.
 
-## 4. MVP user stories
+Research functionality is an extension, not the initial product.
 
-1. As a user, I can list the economic series tracked by the service.
-2. As an operator, I can trigger synchronization for a configured series.
-3. As a user, I can see which observations were new or revised during a synchronization.
-4. As a user, I can inspect the complete revision history for a period.
-5. As a researcher, I can request the data that was known as of a given date.
-6. As a researcher, I can create an immutable snapshot containing one or more series.
-7. As a researcher, I can export a snapshot as JSON or CSV with source metadata and a checksum.
+## 4. Product MVP user stories
 
-## 5. MVP functional requirements
+1. As a user, I can browse the economic series supported by the service.
+2. As a user, I can create a watchlist and add series to it.
+3. As an operator, I can trigger synchronization manually.
+4. As the system, I can schedule synchronization without user intervention.
+5. As a user, I can see which observations were new, revised, removed, or missing.
+6. As a user, I can inspect every stored version of an observation.
+7. As a developer, I can subscribe a webhook to a watchlist.
+8. As a developer, I can verify that a webhook came from MacroMonitor.
+9. As a developer, I can inspect successful and failed delivery attempts.
+10. As an operator, I can safely retry a failed job or delivery without creating duplicates.
+
+## 5. Functional requirements
 
 ### FR-1: Series catalog
 
-- Store provider ID, title, units, frequency, source, and last synchronization time.
-- Support a small configured list of FRED series such as CPI, unemployment, and the federal funds rate.
-- Validate unknown or inactive series IDs.
+- Store provider ID, title, units, frequency, source, and active status.
+- Begin with a small configured set of FRED series such as CPI, unemployment, GDP, and the federal funds rate.
+- Refresh provider metadata and detect unit or frequency changes.
+- Reject unknown or inactive series IDs.
 
-### FR-2: Provider ingestion
+### FR-2: Watchlists
 
-- Fetch observations and relevant metadata from FRED.
-- Use explicit request timeouts and bounded retries.
-- Record the provider retrieval time.
-- Convert provider responses into internal domain objects before persistence.
-- Never commit a real API key; read it from the environment.
+- Create, read, update, and delete watchlists.
+- Add or remove supported series.
+- Prevent the same series from appearing twice in one watchlist.
+- Associate watchlists with an owner once authentication is enabled.
 
-### FR-3: Version storage
+### FR-3: Provider ingestion
+
+- Retrieve observations and relevant metadata from FRED.
+- Use explicit connection and response timeouts.
+- Retry only transient failures with bounded exponential backoff and jitter.
+- Normalize provider responses into internal domain objects.
+- Record retrieval time and provider vintage dates when available.
+- Read provider credentials from environment variables or a secret manager.
+
+### FR-4: Version history
 
 - Preserve every materially different value seen for a series and period.
-- Store when a version was first observed by this system.
-- Store the provider's vintage/realtime dates when available.
 - Never overwrite an older observation version.
-- Represent missing values explicitly instead of converting them to zero.
+- Store decimal values without binary floating-point comparison.
+- Represent missing values explicitly rather than converting them to zero.
+- Record when the platform first observed each version.
+- Prevent duplicate versions with database constraints.
 
-### FR-4: Synchronization and change detection
+### FR-5: Change detection
 
-- Compare a provider response with the latest stored state.
-- Classify each result as `new`, `revised`, `unchanged`, or `missing`.
-- Calculate the signed and absolute revision amount when numeric values change.
-- Save the observation versions and the synchronization result atomically.
-- Reprocessing the same provider response must not create duplicates.
+- Compare incoming normalized observations with the latest stored state.
+- Classify results as `new`, `revised`, `unchanged`, `removed`, or `missing`.
+- Calculate signed and absolute revision amounts.
+- Detect relevant series metadata changes.
+- Create immutable change events for meaningful changes.
+- Save the sync run, versions, and events atomically.
 
-### FR-5: Change and revision API
+### FR-6: Synchronization
 
-- List synchronization runs for a series.
-- Return the new and revised observations from a run.
-- Return all known versions for a given series and period.
-- Use pagination for collection endpoints.
+- Support manual synchronization for development and administration.
+- Support scheduled synchronization for watched active series.
+- Avoid overlapping synchronization of the same series.
+- Reprocessing identical input must not create duplicate versions or events.
+- Record running, successful, and failed sync states with summary counts.
 
-Proposed MVP routes:
+### FR-7: Release and revision API
+
+- List tracked series and metadata.
+- List synchronization runs.
+- Return changes produced by a sync run.
+- Return all known versions for a series and economic period.
+- Return a feed of change events relevant to a watchlist.
+- Paginate all unbounded collections.
+
+### FR-8: Webhook subscriptions
+
+- Create, list, disable, and delete webhook subscriptions for a watchlist.
+- Validate HTTPS callback URLs in production.
+- Store webhook secrets securely.
+- Allow event-type filtering.
+- Send a test event before enabling a subscription.
+
+### FR-9: Webhook delivery
+
+- Deliver the series, period, previous value, new value, revision amount, and event timestamp.
+- Sign each request with HMAC using the subscription secret.
+- Include an event ID and timestamp for replay protection.
+- Deliver asynchronously outside the API request path.
+- Retry transient failures using bounded exponential backoff.
+- Record every attempt, response status, duration, and sanitized failure category.
+- Move exhausted deliveries to a dead-letter state.
+- Support safe manual replay without producing a second logical event.
+
+### FR-10: Authentication and ownership
+
+- Authentication is not required for the earliest local engine milestones.
+- It is required before public deployment.
+- Users may access only their own watchlists, subscriptions, and delivery history.
+- Administrative synchronization and replay operations require elevated authorization.
+
+### FR-11: Email notifications
+
+Email may be added after webhook delivery is reliable. It is not required for the product MVP because webhooks demonstrate the asynchronous delivery system without adding email-provider and template complexity.
+
+## 6. Proposed API surface
 
 ```text
-GET  /health
-GET  /series
-GET  /series/{series_id}
-POST /series/{series_id}/sync
-GET  /series/{series_id}/sync-runs
-GET  /sync-runs/{run_id}/changes
-GET  /series/{series_id}/revisions?period=YYYY-MM-DD
+GET    /health
+
+GET    /api/v1/series
+GET    /api/v1/series/{series_id}
+POST   /api/v1/series/{series_id}/sync
+GET    /api/v1/series/{series_id}/sync-runs
+GET    /api/v1/series/{series_id}/revisions?period=YYYY-MM-DD
+
+POST   /api/v1/watchlists
+GET    /api/v1/watchlists
+GET    /api/v1/watchlists/{watchlist_id}
+PATCH  /api/v1/watchlists/{watchlist_id}
+DELETE /api/v1/watchlists/{watchlist_id}
+PUT    /api/v1/watchlists/{watchlist_id}/series/{series_id}
+DELETE /api/v1/watchlists/{watchlist_id}/series/{series_id}
+GET    /api/v1/watchlists/{watchlist_id}/events
+
+GET    /api/v1/sync-runs/{run_id}
+GET    /api/v1/sync-runs/{run_id}/changes
+
+POST   /api/v1/watchlists/{watchlist_id}/webhooks
+GET    /api/v1/watchlists/{watchlist_id}/webhooks
+DELETE /api/v1/webhooks/{subscription_id}
+POST   /api/v1/webhooks/{subscription_id}/test
+GET    /api/v1/webhooks/{subscription_id}/deliveries
+POST   /api/v1/deliveries/{delivery_id}/replay
 ```
 
-### FR-6: Point-in-time queries
+## 7. Conceptual data model
 
-- For every requested period, return the latest version known on or before `as_of`.
-- Exclude values first observed after `as_of`.
-- Include the effective vintage and observation timestamps in the response.
+- `users`: authenticated owners and roles.
+- `series`: provider series metadata.
+- `watchlists`: user-owned monitoring groups.
+- `watchlist_series`: many-to-many membership.
+- `sync_runs`: ingestion attempt, status, timing, and result counts.
+- `observation_versions`: append-only values for each series and economic period.
+- `change_events`: immutable meaningful differences produced by synchronization.
+- `webhook_subscriptions`: callback configuration, filters, status, and secret reference.
+- `deliveries`: one logical event delivery per subscription.
+- `delivery_attempts`: each HTTP attempt, response, duration, and error category.
 
-### FR-7: Reproducible snapshots
+Exact columns and constraints will be finalized before the first migration.
 
-- Create a snapshot from one or more series and an `as_of` timestamp.
-- Freeze the selected observation-version IDs so later revisions cannot alter the snapshot.
-- Include series metadata, units, frequency, source, creation time, and selection criteria.
-- Generate a deterministic SHA-256 checksum from canonical snapshot content.
-- Export the snapshot as JSON and CSV.
+## 8. Non-functional requirements
 
-Proposed routes:
+### Correctness and consistency
 
-```text
-POST /snapshots
-GET  /snapshots/{snapshot_id}
-GET  /snapshots/{snapshot_id}/export?format=json
-GET  /snapshots/{snapshot_id}/export?format=csv
-```
+- Use Python `Decimal` and PostgreSQL `NUMERIC`.
+- Write a sync run, its versions, and its change events in one transaction.
+- Use database constraints as the final duplicate defense.
 
-## 6. Data model, conceptually
+### Idempotency
 
-- `series`: one record per tracked economic series.
-- `sync_runs`: one record per ingestion attempt, including status and counts.
-- `observation_versions`: append-only values for a series and economic period.
-- `changes`: the new/revised/missing classifications produced by a sync run.
-- `snapshots`: immutable snapshot metadata and checksum.
-- `snapshot_items`: the exact observation versions included in a snapshot.
-
-Exact tables and constraints will be designed before the first migration.
-
-## 7. Non-functional requirements
-
-### Correctness
-
-- Use decimal-safe numeric handling; do not rely on binary floating point for comparisons.
-- Make synchronization idempotent.
-- Use database constraints to prevent duplicate versions.
-- Store service timestamps in UTC and preserve provider vintage dates separately.
+- Repeating provider input creates no duplicate observation versions or events.
+- Redelivered queue messages create no duplicate logical deliveries.
+- Mutation endpoints support an idempotency key where client retries are expected.
 
 ### Reliability
 
-- A failed provider call must not create a successful or partial sync result.
-- Database changes for one synchronization must be transactional.
-- Errors must be structured and logged without secrets.
+- A provider failure must not produce a partially successful sync.
+- FRED outages must not prevent reads of stored history.
+- Notification failures must not roll back committed economic data.
+- Queued work is retried and eventually dead-lettered for inspection.
 
-### Performance
+### Performance and scale
 
-- Optimize for correctness first and a catalog of tens, not thousands, of series.
-- Paginated API requests should remain responsive with at least one million observation-version rows.
-- Add indexes based on measured query patterns.
+- Common reads should remain responsive with at least one million observation-version rows.
+- Collection endpoints use bounded cursor pagination.
+- Workers can scale independently from the API.
+- Series synchronization can be distributed while retaining per-series concurrency control.
 
 ### Security
 
-- Keep API keys and database credentials in environment variables or a secret manager.
-- Validate provider IDs, dates, pagination, and export formats.
-- Do not expose internal stack traces through the API.
-- Authentication is not required for the local MVP, but mutation endpoints must be easy to protect later.
+- No credentials or webhook secrets are committed to Git.
+- Inputs, callback URLs, ranges, and payload sizes are validated.
+- Webhook requests are signed and timestamped.
+- Logs redact secrets, authorization headers, and sensitive callback details.
+- Public deployment includes authentication, authorization, TLS, and rate limiting.
 
-### Quality and operations
+### Observability
 
-- Unit-test comparison, point-in-time selection, and checksum logic.
-- Integration-test database constraints, transactions, and API endpoints.
-- Use migrations for every schema change.
-- Provide local startup instructions and sample environment configuration.
-- CI must run formatting, linting, type checking, and tests.
+- Structured logs carry request, job, sync-run, event, and delivery IDs.
+- Metrics cover API latency, provider failures, series staleness, queue age, revision counts, webhook success, retries, and dead letters.
+- Alerts focus on sustained user-impacting failures.
 
-## 8. MVP acceptance criteria
+### Maintainability and testability
 
-The MVP is complete when a reviewer can:
+- Provider-specific code remains behind an interface.
+- Schema changes use Alembic migrations.
+- Core business logic runs against deterministic fixtures without network access.
+- CI runs formatting, linting, type checking, unit tests, and integration tests.
 
-1. start the API and PostgreSQL locally from documented commands;
-2. synchronize at least three configured FRED series;
-3. repeat a synchronization without duplicate records;
-4. run a fixture-based demo that produces both a new observation and a revision;
-5. inspect the revision through the REST API;
-6. query what was known at a historical timestamp;
-7. create and export a snapshot;
-8. regenerate the same checksum from the exported canonical data; and
-9. run the full automated test suite and CI successfully.
+## 9. Product MVP acceptance criteria
 
-The fixture-based demo is required because real FRED data may not revise during a live project demonstration.
+The local product MVP is complete when a reviewer can:
 
-## 9. Out of scope for the MVP
+1. start the API, workers, local queue, and PostgreSQL from documented commands;
+2. create a watchlist containing at least three FRED series;
+3. execute two fixture releases that produce a new observation and revision;
+4. repeat the same ingestion without duplicate versions or events;
+5. inspect changes and revision history through the API;
+6. subscribe a local test webhook;
+7. observe a signed webhook generated from the change event;
+8. simulate failure, inspect retries, and see the exhausted delivery state;
+9. replay the failed delivery safely;
+10. run the complete automated test suite successfully.
 
-- World Bank, BEA, or other providers.
-- User accounts and multi-tenant permissions.
-- User-created watchlists.
-- Email and webhook delivery.
-- Scheduled cloud ingestion.
-- AWS infrastructure.
-- A browser frontend.
-- Economic forecasting, trading signals, or revision analytics.
+The public production release additionally requires authentication, AWS deployment, monitoring, backups, and an operational runbook.
+
+## 10. Out of scope for the product MVP
+
+- Providers other than FRED.
+- Email notification.
+- Browser frontend or mobile application.
+- Immutable research snapshots and CSV datasets.
+- Forecasting, trading signals, and backtesting.
 - High-frequency market data.
+- Complex billing or organization accounts.
 
-These are candidates for later phases, not promises for the first release.
+These may be added only after the monitoring workflow is complete and reliable.
 
-## 10. Product success measures
+## 11. Success measures
 
-- Duplicate observation versions created by an identical sync: zero.
-- Fixture changes correctly classified: 100% of tested cases.
-- Snapshot checksum changes when and only when canonical snapshot content changes.
-- A new developer can run the documented demo locally without reading the implementation.
-
+- Duplicate versions from identical input: zero.
+- Duplicate logical notifications during retry testing: zero.
+- Fixture classifications correct across all tested cases.
+- Successful webhooks delivered once under normal operation.
+- Failed webhook attempts visible and safely replayable.
+- Stale watched series detectable through metrics.
+- A new developer can run the complete local demonstration from the README.

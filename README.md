@@ -1,32 +1,58 @@
-# Economic Release Tracker
+# MacroMonitor
 
-An API-first platform that records how economic data changes over time. It detects new observations and revisions, preserves what was known at each point in time, and creates reproducible dataset snapshots.
+MacroMonitor is a backend service that monitors selected economic indicators, detects new releases and historical revisions, and sends reliable webhook notifications describing exactly what changed.
+
+The GitHub repository remains named `economic-release-tracker`; **MacroMonitor** is the product name.
 
 ## The idea in plain English
 
-Economic figures are not fixed forever. A GDP or employment number can be published today and revised later. Most data APIs make it easy to fetch the latest value, but they do not make it convenient to answer:
+MacroMonitor works like a price tracker for government economic data:
 
-- What changed in the latest release?
-- Was an old value revised?
-- What data was available on a particular date?
-- Can I reproduce an analysis using the same data version?
+1. A user selects indicators such as CPI, GDP, unemployment, or interest rates.
+2. Scheduled workers retrieve the latest data from FRED.
+3. The service compares the response with its append-only PostgreSQL history.
+4. It identifies new, revised, removed, or missing observations.
+5. It stores an auditable change event.
+6. It sends a signed webhook to subscribed applications.
 
-This project periodically saves provider data, compares each retrieval with the previous one, and exposes the differences through a REST API.
+Example:
 
-## Deliberately small first version
+```text
+New observation:
+October 2026: 326.4
 
-The MVP will support:
+Revisions:
+August 2026:    324.1 -> 324.0
+September 2026: 325.3 -> 325.5
+```
 
-- one provider: FRED;
-- a small configured set of economic series;
-- manual synchronization;
-- versioned observations in PostgreSQL;
-- detection of new, revised, and unchanged observations;
-- release/change history through FastAPI;
-- point-in-time snapshots with CSV/JSON export and a checksum;
-- automated tests for the comparison and snapshot logic.
+FRED provides the underlying data. MacroMonitor provides the monitoring, comparison, history, and notification workflow.
 
-Email, webhooks, AWS scheduling, additional providers, authentication, and a frontend are later phases. They are intentionally excluded from the MVP.
+## Product MVP
+
+The first complete product will support:
+
+- FRED economic series;
+- user watchlists;
+- manual and scheduled synchronization;
+- append-only observation versions;
+- new, revised, unchanged, removed, and missing classifications;
+- release and revision history through FastAPI;
+- webhook subscriptions;
+- asynchronous delivery with retries and attempt history;
+- idempotent processing so retries do not duplicate versions or notifications;
+- deterministic fixtures and automated tests.
+
+Authentication and AWS deployment are added before the public production release. Email, extra data providers, a browser frontend, point-in-time research snapshots, and quantitative analysis are optional extensions.
+
+## Technology direction
+
+- FastAPI and Pydantic
+- PostgreSQL, SQLAlchemy, and Alembic
+- Background workers and a queue
+- Docker Compose for local development
+- AWS ECS Fargate, RDS, SQS, EventBridge, ECR, and CloudWatch for production
+- pytest and GitHub Actions
 
 ## Project documents
 
@@ -36,5 +62,4 @@ Email, webhooks, AWS scheduling, additional providers, authentication, and a fro
 
 ## Current status
 
-Phase 0: product scope and delivery plan.
-
+Phase 0: product definition aligned around monitoring, watchlists, and reliable notifications.

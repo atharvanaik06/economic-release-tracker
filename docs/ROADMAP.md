@@ -1,35 +1,35 @@
-# Phased Build and Commit Plan
+# MacroMonitor Phased Build and Commit Plan
 
 ## How we will work
 
-Each phase must finish with a demonstrable result, tests, and updated documentation. Commits will represent coherent engineering steps rather than arbitrary file batches.
+Every phase ends with working behavior, tests, and updated documentation. We will commit each coherent engineering result and push regularly; phases 1, 4, 7, and 8 are portfolio checkpoints, not the only times code reaches GitHub.
 
-Good commit messages explain the outcome:
+Good commits describe an outcome:
 
 ```text
-feat: detect revised observations during synchronization
-test: cover missing and unchanged observation comparisons
-docs: add local FRED synchronization walkthrough
+feat: classify revised economic observations
+test: verify duplicate ingestion remains idempotent
+feat: retry failed webhook deliveries
 ```
 
-We will avoid both extremes: one giant final commit and dozens of meaningless commits such as `changes` or `work in progress`.
+We will not create artificial commits merely to increase the commit count.
 
-## Phase 0: Define the product
+## Phase 0: Align the product
 
-**Goal:** agree on the problem, MVP boundary, and delivery sequence.
+**Goal:** define MacroMonitor as a monitoring and notification product.
 
 Deliverables:
 
-- Plain-English project explanation.
-- Functional and non-functional requirements.
-- MVP acceptance criteria.
-- Phased roadmap and commit strategy.
+- One-sentence product pitch.
+- Monitoring-focused requirements.
+- Architecture centered on watchlists, scheduled ingestion, and webhooks.
+- Separation between the product MVP, production deployment, and optional research features.
 
 Planned commit:
 
-1. `docs: define MVP requirements and phased delivery plan`
+1. `docs: refocus product on economic monitoring and alerts`
 
-Exit condition: the MVP can be described in one sentence and every deferred feature is visibly out of scope.
+Exit condition: a recruiter can understand the product in 30 seconds.
 
 ## Phase 1: Create a professional service skeleton
 
@@ -37,13 +37,14 @@ Exit condition: the MVP can be described in one sentence and every deferred feat
 
 Deliverables:
 
-- Python project and dependency configuration.
+- Python project and locked dependency configuration.
 - FastAPI application with `/health`.
-- Settings loaded from environment variables.
+- Typed settings loaded from environment variables.
 - Structured logging foundation.
 - Formatting, linting, typing, and pytest configuration.
-- Dockerfile and local PostgreSQL configuration.
-- CI workflow and contributor commands.
+- Dockerfile and Docker Compose PostgreSQL service.
+- GitHub Actions validation workflow.
+- `.env.example` without real credentials.
 
 Likely commits:
 
@@ -52,182 +53,212 @@ Likely commits:
 3. `build: add containerized local development stack`
 4. `ci: validate formatting types and tests`
 
-Demo: start the stack and receive a healthy API response.
+Demo: clone the repository, start the stack, and receive a healthy API response.
 
-## Phase 2: Design and persist versioned observations
+**Portfolio checkpoint:** polish setup instructions and capture the first working API screenshot.
 
-**Goal:** create the database foundation without depending on a live provider.
+## Phase 2: Design and persist economic history
+
+**Goal:** build the append-only database foundation without relying on a live provider.
 
 Deliverables:
 
-- Domain types for series, observations, versions, and sync results.
+- Domain types for series, observations, versions, sync runs, and change events.
 - SQLAlchemy models and Alembic migrations.
-- Constraints that protect append-only history and idempotency.
-- Repository layer for version and revision queries.
-- Database integration tests.
+- Decimal-safe value representation.
+- Constraints protecting version identity and append-only history.
+- Repository queries for current values and revision history.
+- PostgreSQL integration tests.
 
 Likely commits:
 
 1. `feat: model economic series and observation versions`
-2. `feat: add initial PostgreSQL schema and constraints`
-3. `feat: implement observation repository queries`
-4. `test: verify version uniqueness and transactional writes`
+2. `feat: add sync run and change event schema`
+3. `feat: implement revision history repositories`
+4. `test: verify uniqueness transactions and version history`
 
-Demo: load fixture versions and query a period's full history.
+Demo: load two fixture vintages and query the complete history of one period.
 
-## Phase 3: Integrate FRED behind a provider boundary
+## Phase 3: Integrate FRED behind a provider interface
 
-**Goal:** retrieve economic data without coupling the rest of the service to FRED response shapes.
+**Goal:** retrieve and normalize economic data without coupling the system to FRED response formats.
 
 Deliverables:
 
-- Provider protocol/interface.
+- Provider protocol.
 - FRED HTTP client with timeout, retry, and error mapping.
-- Normalization of values, missing data, dates, and metadata.
-- Fake provider and recorded fixtures for deterministic tests.
+- Normalization of decimals, dates, missing values, units, and frequency.
+- Fake provider and deterministic fixtures.
+- Tests that run without external network access.
 
 Likely commits:
 
 1. `feat: define economic data provider contract`
 2. `feat: implement FRED series and observation client`
-3. `test: add deterministic FRED response fixtures`
+3. `test: add deterministic provider fixtures`
 
-Demo: fetch and normalize one configured series while tests can run offline.
+Demo: fetch and normalize one configured series while the full test suite remains offline.
 
-## Phase 4: Build the synchronization and diff engine
+## Phase 4: Build the synchronization and revision engine
 
-**Goal:** turn provider responses into reliable release-change records.
+**Goal:** reliably convert provider responses into version history and change events.
 
 Deliverables:
 
-- Decimal-safe comparison logic.
-- `new`, `revised`, `unchanged`, and `missing` classifications.
-- Atomic persistence of a sync run, versions, and changes.
-- Idempotency and concurrent-run protection.
-- Failure states and useful logs.
+- `new`, `revised`, `unchanged`, `removed`, and `missing` classifications.
+- Metadata-change detection.
+- Atomic persistence of versions, events, and sync status.
+- Idempotency for repeated input.
+- Per-series concurrency control.
+- Failure-state logging and rollback tests.
 
 Likely commits:
 
-1. `feat: classify new revised and missing observations`
-2. `feat: persist synchronization runs atomically`
+1. `feat: classify economic observation changes`
+2. `feat: persist synchronization results atomically`
 3. `feat: make repeated synchronization idempotent`
-4. `test: cover revision and rollback scenarios`
+4. `feat: prevent concurrent syncs for one series`
+5. `test: cover revisions removals failures and rollback`
 
-Demo: use fixtures to show a new quarter and a historical revision, then repeat the sync with no duplicates.
+Demo: process two fixture releases, display a new observation and revision, then repeat the job with zero duplicates.
 
-## Phase 5: Expose series, runs, and revisions through the API
+**Portfolio checkpoint:** record the core revision demo and document the key database and idempotency decisions.
 
-**Goal:** make the core engine useful to an API client.
+## Phase 5: Expose the core API and watchlists
+
+**Goal:** allow clients to configure monitoring and inspect results through HTTP.
 
 Deliverables:
 
-- Series catalog and detail endpoints.
-- Manual synchronization endpoint.
-- Sync-run change endpoint.
-- Period revision-history endpoint.
-- Pagination, validation, schemas, and consistent errors.
-- API integration tests and OpenAPI examples.
+- Series catalog endpoints.
+- Manual sync endpoint.
+- Sync-run and revision-history endpoints.
+- Watchlist CRUD and series membership.
+- Watchlist event feed.
+- Validation, cursor pagination, consistent errors, and OpenAPI examples.
+- API integration tests.
 
 Likely commits:
 
-1. `feat: expose tracked series endpoints`
-2. `feat: expose synchronization and change history`
-3. `feat: expose period revision history`
-4. `test: cover validation pagination and API errors`
+1. `feat: expose tracked series and sync history`
+2. `feat: add watchlist management`
+3. `feat: expose watchlist change events`
+4. `test: cover API validation pagination and errors`
 5. `docs: add core API walkthrough`
 
-Demo: execute the complete revision workflow using HTTP requests only.
+Demo: create a watchlist and inspect its revision event using only API calls.
 
-## Phase 6: Add point-in-time data and reproducible snapshots
+## Phase 6: Add scheduled asynchronous ingestion
 
-**Goal:** deliver the project's strongest research-facing feature.
+**Goal:** monitor watched series automatically without blocking API requests.
 
 Deliverables:
 
-- Point-in-time observation query.
-- Immutable snapshot records referencing exact versions.
-- Canonical serialization and SHA-256 checksum.
-- JSON and CSV export.
-- Snapshot verification command or endpoint.
+- Background job abstraction with a simple local queue implementation.
+- Schedule calculation for active watched series.
+- Worker that invokes the existing synchronization service.
+- Deterministic job identity and safe redelivery.
+- Retry, timeout, and dead-letter behavior.
+- Job-status and series-staleness visibility.
+
+The local implementation preserves the boundaries later used by EventBridge and SQS without requiring AWS during development.
 
 Likely commits:
 
-1. `feat: query observations available as of a timestamp`
-2. `feat: create immutable multi-series snapshots`
-3. `feat: export snapshots with deterministic checksums`
-4. `test: verify point-in-time and checksum behavior`
-5. `docs: add reproducible research example`
+1. `feat: enqueue watched series synchronization jobs`
+2. `feat: process ingestion jobs in a background worker`
+3. `feat: retry and dead-letter failed ingestion jobs`
+4. `test: prove safe duplicate job delivery`
+5. `docs: add scheduled monitoring demonstration`
 
-Demo: create a historical snapshot, export it, and verify its checksum after newer data has been ingested.
+Demo: a schedule creates a job, a worker detects a fixture revision, and redelivery creates no duplicate event.
 
-**MVP release point:** tag `v0.1.0` after Phases 1-6 satisfy the acceptance criteria.
+## Phase 7: Deliver reliable webhook notifications
 
-## Phase 7: Add users, watchlists, and notifications
-
-**Goal:** evolve the research tool into a multi-user monitoring product.
+**Goal:** complete the local MacroMonitor product.
 
 Deliverables:
 
-- Authentication and authorization.
-- User-owned watchlists.
-- Webhook subscriptions and signed payloads.
-- Background delivery queue, retry policy, and delivery history.
-- Optional email notifications.
+- Webhook subscription endpoints.
+- Test-event validation.
+- HMAC-signed event payloads.
+- Notification queue and delivery worker.
+- Exponential-backoff retries.
+- Delivery-attempt audit history.
+- Dead-letter state and safe manual replay.
+- End-to-end test from economic revision to webhook receipt.
 
-Example commits:
+Likely commits:
 
-1. `feat: add authenticated user accounts`
-2. `feat: add user-owned series watchlists`
-3. `feat: enqueue signed webhook deliveries`
-4. `feat: retry and audit failed notifications`
+1. `feat: add webhook subscriptions to watchlists`
+2. `feat: enqueue signed change notifications`
+3. `feat: deliver webhooks in a background worker`
+4. `feat: retry audit and dead-letter failed deliveries`
+5. `feat: safely replay failed webhook deliveries`
+6. `test: cover the complete monitoring workflow`
+7. `docs: add MacroMonitor local demo`
 
-Demo: a watched revision produces a signed webhook and records the delivery attempt.
+Demo: a watched revision produces a signed webhook; a failing receiver is retried, audited, dead-lettered, and successfully replayed.
 
-## Phase 8: Schedule and deploy on AWS
+**Product MVP release:** tag `v0.1.0`.
 
-**Goal:** operate the service reliably without manual synchronization.
+**Portfolio checkpoint:** publish a short recorded demonstration, architecture diagram, measured test count, and local performance figures.
+
+## Phase 8: Secure, deploy, and operate on AWS
+
+**Goal:** turn the local product into a credible public production service.
 
 Deliverables:
 
-- Production container images.
-- Infrastructure as code for API, worker, PostgreSQL, queue, storage, and secrets.
-- EventBridge schedule.
-- CloudWatch logs, metrics, alarms, and dead-letter handling.
+- User authentication and ownership authorization.
+- Production rate limits and secure webhook-secret handling.
+- API and worker container images in ECR.
+- ECS Fargate services.
+- RDS PostgreSQL with backups.
+- EventBridge scheduling.
+- SQS ingestion and notification queues with dead-letter queues.
+- CloudWatch logs, metrics, dashboards, and alarms.
+- Secrets Manager integration.
 - GitHub Actions deployment workflow.
-- Runbook and cost notes.
+- Infrastructure as code, cost notes, recovery procedure, and runbook.
 
-The initial AWS design can use ECS Fargate, RDS PostgreSQL, EventBridge, SQS, ECR, S3, CloudWatch, and Secrets Manager, but it must be reviewed against cost and operational complexity before implementation.
+Likely commits:
 
-Example commits:
+1. `feat: add authentication and resource ownership`
+2. `infra: provision network database queues and secrets`
+3. `infra: deploy API ingestion and delivery services`
+4. `infra: schedule monitoring and configure dead-letter queues`
+5. `ops: add metrics alarms backups and runbook`
+6. `ci: automate production image build and deployment`
+7. `docs: publish production architecture and live demo`
 
-1. `infra: provision network database and secrets`
-2. `infra: deploy API and worker services`
-3. `infra: schedule ingestion and queue notifications`
-4. `ci: automate image build and deployment`
-5. `ops: add alarms dashboards and recovery runbook`
+Demo: a real scheduled FRED check produces an auditable change event and delivers a webhook from the deployed system.
 
-Demo: a scheduled cloud ingestion creates a change event and a downloadable snapshot export.
+**Production release:** tag `v1.0.0`.
 
-## Phase 9: Optional portfolio extensions
+**Portfolio checkpoint:** include the live API, production architecture, operational metrics, and failure-recovery demonstration.
 
-Only start these after the deployed core is reliable:
+## Phase 9: Optional extensions
 
-- Add BEA or World Bank through the existing provider contract.
-- Build a small revision timeline dashboard.
-- Analyze revision bias and magnitude.
-- Backtest with point-in-time rather than revised data.
-- Add release-calendar awareness.
+Only begin these after the monitoring workflow is reliable:
 
-Each extension should have a separate issue, measurable user value, and its own commit series.
+- Email notification.
+- Point-in-time research queries.
+- Immutable datasets and checksums.
+- Revision analytics dashboard.
+- BEA or World Bank provider.
+- Release-calendar awareness.
+- Quantitative revision-bias or look-ahead-bias analysis.
 
-## Recommended portfolio checkpoints
+Each extension requires a separate issue, measurable user value, and its own commit series.
 
-Capture evidence at these points:
+## Milestones and Git workflow
 
-1. Phase 1: API and engineering quality baseline.
-2. Phase 4: core algorithm with a convincing revision demo.
-3. Phase 6: complete local MVP and reproducible snapshot story.
-4. Phase 8: cloud architecture and operations story.
+| Point | Result | Suggested tag |
+|---|---|---|
+| Phase 1 | Working API foundation | optional `v0.0.1` |
+| Phase 4 | Complete revision engine | optional `v0.0.2` |
+| Phase 7 | Complete local product MVP | `v0.1.0` |
+| Phase 8 | Secure deployed production service | `v1.0.0` |
 
-The Git history will then show a natural progression: product thinking, foundations, data modeling, integration, algorithmic behavior, API design, reproducibility, asynchronous systems, and cloud operations.
-
+Commit after every meaningful, tested change. Push at the end of each completed work session or feature. Milestone phases are for README polish, demonstrations, and releases—not the only times we push.

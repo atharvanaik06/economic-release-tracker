@@ -1,409 +1,368 @@
-# System Design
+# MacroMonitor System Design
 
 ## 1: Requirements
 
 ### 1.1 Functional requirements
 
-The system must:
+MacroMonitor must:
 
-1. Maintain a catalog of tracked economic series and their metadata.
-2. Retrieve observations and vintage metadata from FRED.
-3. Store every materially different version of an observation instead of overwriting old values.
-4. Compare each provider response with the latest stored version.
-5. Classify observations as `new`, `revised`, `unchanged`, or `missing`.
-6. Record synchronization runs and the changes detected in each run.
-7. Return the revision history of a series for a particular economic period.
-8. Reconstruct the observations known by the system at an `as_of` timestamp.
-9. Create immutable, multi-series snapshots using exact observation versions.
-10. Export snapshots as JSON and CSV with metadata and a SHA-256 checksum.
-11. Provide deterministic fixture data that demonstrates a release and revision even when live data has not changed.
-
-After the MVP, the system should also:
-
-12. Authenticate users and support user-owned watchlists.
-13. Send signed webhook or email notifications for watched changes.
-14. Retry failed deliveries and retain an audit history.
-15. Run ingestion automatically on a schedule.
-16. Support additional providers through the same provider interface.
+1. Maintain a catalog of supported FRED economic series.
+2. Let users organize selected series into watchlists.
+3. Retrieve provider data manually and on a schedule.
+4. Preserve every materially different observation version.
+5. Detect new, revised, unchanged, removed, and missing observations.
+6. Record immutable change events and synchronization history.
+7. Expose series, revisions, watchlists, runs, and events through a REST API.
+8. Let developers subscribe HTTPS webhooks to a watchlist.
+9. Deliver signed event payloads asynchronously.
+10. Retry transient delivery failures and retain every attempt.
+11. Dead-letter exhausted work and support safe replay.
+12. Remain idempotent when API requests, jobs, or queue messages are repeated.
+13. Authenticate users and enforce ownership before public deployment.
 
 ### 1.2 Non-functional requirements
 
 | Area | Requirement |
 |---|---|
-| Correctness | Decimal-safe comparisons; point-in-time queries must not leak later data. |
-| Idempotency | Processing the same provider response twice must not create duplicate versions or changes. |
-| Consistency | A synchronization run, its observation versions, and its changes are committed atomically. |
-| Availability | The API remains usable for stored data when FRED is temporarily unavailable. |
-| Reliability | Provider calls use timeouts and bounded retries; failures are recorded without partial writes. |
-| Performance | Common reads remain responsive with at least one million observation-version rows. |
-| Scalability | API and workers can scale independently; ingestion work can later be distributed by series. |
-| Reproducibility | A snapshot remains unchanged after later revisions and has deterministic canonical content. |
-| Security | Secrets stay outside source control; inputs are validated; later webhooks are signed. |
-| Observability | Structured logs, run status, latency, error counts, and notification failures are visible. |
-| Maintainability | Provider-specific code is isolated behind an interface and schema changes use migrations. |
-| Testability | Business logic can run against fixtures without FRED, AWS, or a network connection. |
+| Correctness | Decimal-safe comparison and explicit missing/removed semantics. |
+| Idempotency | Repeated provider input or queue delivery produces no duplicate logical records or notifications. |
+| Consistency | Versions and change events from one sync commit atomically. |
+| Reliability | Provider and webhook failures use bounded retries and auditable terminal states. |
+| Availability | Stored history remains readable while FRED or webhook receivers are unavailable. |
+| Performance | Common reads remain responsive with at least one million version rows. |
+| Scalability | API, ingestion workers, and delivery workers scale independently. |
+| Security | Secrets remain external, ownership is enforced, and webhook payloads are signed. |
+| Observability | Logs and metrics trace work from schedule through webhook attempt. |
+| Maintainability | Provider, queue, and delivery implementations remain behind interfaces. |
+| Testability | The complete workflow runs against deterministic local fixtures. |
 
-### 1.3 Scope boundary
+### 1.3 Scope
 
-The MVP is a local, API-first service with FRED, FastAPI, PostgreSQL, manual synchronization, revision history, point-in-time queries, and snapshots.
+The product MVP includes FRED, watchlists, version history, revision detection, asynchronous scheduling, signed webhooks, retries, delivery history, and safe replay.
 
-Authentication, watchlists, notifications, scheduled jobs, AWS, extra providers, and a frontend are later stages. This boundary prevents the first release from becoming an unfinished distributed system.
+The production release adds authentication and AWS operation. Email, other providers, a frontend, research snapshots, and quantitative analysis are optional extensions.
 
 ## 2: Core items
 
-### 2.1 Core domain objects
+### 2.1 Domain objects
+
+#### User
+
+Owns watchlists and webhook subscriptions. Users and ownership enforcement are introduced before public deployment.
 
 #### Series
 
-Describes a provider dataset such as `CPIAUCSL`.
+Represents a provider dataset such as `CPIAUCSL`. It stores provider identity, title, units, frequency, active status, metadata fingerprint, and last successful sync time.
 
-Important fields:
+#### Watchlist and watchlist membership
 
-- internal ID;
-- provider and provider series ID;
-- title, units, and frequency;
-- active status;
-- provider metadata;
-- last successful synchronization time.
+A watchlist is a named collection of series selected for monitoring. Membership prevents duplicates and allows one series to belong to many watchlists.
 
 #### Observation version
 
-An append-only record of a value observed for one series and economic period.
-
-Important fields:
-
-- series ID and observation period;
-- decimal value or explicit missing status;
-- provider realtime/vintage dates;
-- first-observed timestamp;
-- content fingerprint;
-- source sync-run ID.
-
-The latest row is not the only truth. Older rows are deliberately retained.
+An append-only record containing a series, economic period, decimal value or missing state, provider vintage dates, first-observed time, content fingerprint, and source sync run.
 
 #### Sync run
 
-Represents one attempt to retrieve and process a series.
+One attempt to retrieve and process a series, including state, timing, counts, provider metadata, and sanitized failure information.
 
-Important fields:
+#### Change event
 
-- series ID;
-- status: `running`, `succeeded`, or `failed`;
-- start and finish timestamps;
-- provider request identifier when available;
-- counts for new, revised, unchanged, and missing observations;
-- sanitized error details.
+An immutable meaningful difference with an event ID, series, period, type, previous and new version IDs, revision amount, metadata changes, timestamp, and source sync run.
 
-#### Change
+Unchanged observations contribute to run counts but do not create notification events.
 
-Explains how one economic period differed during a sync run.
+#### Webhook subscription
 
-Important fields:
+Associates a watchlist with a callback URL, event filters, status, and secret reference used for HMAC signing.
 
-- sync-run ID and period;
-- type: `new`, `revised`, or `missing`;
-- previous and new observation-version IDs;
-- signed and absolute numeric change.
+#### Delivery and delivery attempt
 
-Unchanged observations contribute to run counts but do not need individual change rows.
+A delivery is the logical pairing of a change event and subscription. Delivery attempts record each HTTP request, status, duration, next retry time, and sanitized error.
 
-#### Snapshot and snapshot item
+Separating logical deliveries from attempts makes retries observable without duplicating events.
 
-A snapshot stores selection criteria, creation metadata, format version, and checksum. Snapshot items reference the exact observation-version rows selected for each series and period.
+### 2.2 Application components
 
-This reference-based design prevents later revisions from changing an existing snapshot.
+1. **FastAPI application** — validation, authentication, REST resources, and OpenAPI.
+2. **Series service** — catalog and provider metadata.
+3. **Watchlist service** — ownership and monitored-series membership.
+4. **Provider client** — retrieves and normalizes FRED data.
+5. **Synchronization service** — coordinates fetch, comparison, and persistence.
+6. **Diff engine** — pure classification logic independent of HTTP and storage.
+7. **Repository layer** — transactional PostgreSQL access.
+8. **Scheduler** — identifies active watched series that are due.
+9. **Ingestion queue and workers** — execute synchronization outside API requests.
+10. **Event router** — maps change events to relevant subscriptions.
+11. **Notification queue and workers** — deliver webhooks and schedule retries.
+12. **Operations layer** — logs, metrics, dead-letter inspection, and replay.
 
-### 2.2 Core application components
-
-1. **FastAPI application** — validates requests and exposes the REST API.
-2. **Series service** — manages the configured series catalog.
-3. **Provider client** — fetches and normalizes FRED responses.
-4. **Synchronization service** — coordinates retrieval, comparison, and persistence.
-5. **Diff engine** — classifies normalized observations without knowing about HTTP or database details.
-6. **Repository layer** — performs transactional PostgreSQL reads and writes.
-7. **Point-in-time query service** — selects the newest version known on or before `as_of`.
-8. **Snapshot service** — freezes selected versions, serializes canonical content, and calculates checksums.
-9. **Export service** — streams JSON and CSV representations of a snapshot.
-10. **Worker and queue, later** — execute scheduled ingestion and notification delivery outside API requests.
-
-### 2.3 Core technology choices
+### 2.3 Technology choices
 
 | Concern | Choice | Reason |
 |---|---|---|
-| API | FastAPI + Pydantic | Typed validation, OpenAPI generation, and a strong Python ecosystem. |
-| Database | PostgreSQL | Transactions, constraints, indexing, JSON metadata, and robust historical queries. |
-| ORM/migrations | SQLAlchemy + Alembic | Explicit persistence model and repeatable schema evolution. |
-| Provider access | HTTP client behind a protocol | Keeps FRED-specific response formats out of business logic. |
-| Numeric values | PostgreSQL `NUMERIC` and Python `Decimal` | Avoids false revisions caused by floating-point rounding. |
-| Local runtime | Docker Compose | Reproducible API and database startup. |
-| Tests | pytest with fake provider fixtures | Revisions can be demonstrated deterministically and offline. |
-| Later async work | SQS + worker | Decouples ingestion and notification retries from API traffic. |
+| API | FastAPI + Pydantic | Typed validation and generated OpenAPI. |
+| Database | PostgreSQL | Transactions, constraints, indexes, and historical queries. |
+| Persistence | SQLAlchemy + Alembic | Explicit model and repeatable migrations. |
+| Numeric values | Python `Decimal` + PostgreSQL `NUMERIC` | Prevent false revisions from floating-point error. |
+| Local runtime | Docker Compose | Reproducible API, workers, and database. |
+| Local jobs | Queue abstraction with a lightweight local backend | Develop and test without AWS. |
+| Production jobs | EventBridge + SQS | Scheduling, buffering, redelivery, and dead-letter support. |
+| Compute | ECS Fargate | Separate stateless API and worker scaling. |
+| Tests | pytest + fake provider/receiver fixtures | Deterministic offline failure and retry testing. |
 
 ## 3: APIs
 
-All routes are versioned under `/api/v1`. Timestamps use ISO 8601 UTC values. Collection routes are paginated and errors use one consistent envelope.
+Routes are versioned under `/api/v1`. Timestamps use ISO 8601 UTC. Decimal values are JSON strings to avoid silent client-side precision loss. Collections use opaque cursor pagination.
 
-### 3.1 MVP endpoints
+### 3.1 Series and synchronization
 
 | Method and route | Purpose |
 |---|---|
-| `GET /health` | Report service and database health. |
-| `GET /api/v1/series` | List tracked series. |
-| `GET /api/v1/series/{series_id}` | Return series metadata. |
-| `POST /api/v1/series/{series_id}/sync` | Trigger a manual synchronization. |
+| `GET /health` | Service and dependency health. |
+| `GET /api/v1/series` | List supported series. |
+| `GET /api/v1/series/{series_id}` | Return series metadata and freshness. |
+| `POST /api/v1/series/{series_id}/sync` | Request an administrative manual sync. |
 | `GET /api/v1/series/{series_id}/sync-runs` | List synchronization history. |
-| `GET /api/v1/sync-runs/{run_id}` | Return status and summary counts. |
-| `GET /api/v1/sync-runs/{run_id}/changes` | Return new and revised observations. |
-| `GET /api/v1/series/{series_id}/revisions?period=YYYY-MM-DD` | Return every known version for a period. |
-| `GET /api/v1/series/{series_id}/observations?as_of=...` | Return point-in-time observations. |
-| `POST /api/v1/snapshots` | Create an immutable snapshot. |
-| `GET /api/v1/snapshots/{snapshot_id}` | Return snapshot metadata and items. |
-| `GET /api/v1/snapshots/{snapshot_id}/export?format=json` | Export JSON. |
-| `GET /api/v1/snapshots/{snapshot_id}/export?format=csv` | Export CSV. |
+| `GET /api/v1/series/{series_id}/revisions?period=...` | Return every stored version for a period. |
+| `GET /api/v1/sync-runs/{run_id}` | Return run state and summary counts. |
+| `GET /api/v1/sync-runs/{run_id}/changes` | Return meaningful changes from the run. |
 
-Example snapshot request:
+### 3.2 Watchlists
+
+| Method and route | Purpose |
+|---|---|
+| `POST /api/v1/watchlists` | Create a watchlist. |
+| `GET /api/v1/watchlists` | List the current user's watchlists. |
+| `GET /api/v1/watchlists/{watchlist_id}` | Return one watchlist and its series. |
+| `PATCH /api/v1/watchlists/{watchlist_id}` | Rename or update the watchlist. |
+| `DELETE /api/v1/watchlists/{watchlist_id}` | Delete the watchlist. |
+| `PUT /api/v1/watchlists/{watchlist_id}/series/{series_id}` | Add a series idempotently. |
+| `DELETE /api/v1/watchlists/{watchlist_id}/series/{series_id}` | Remove a series. |
+| `GET /api/v1/watchlists/{watchlist_id}/events` | Return relevant change events. |
+
+### 3.3 Webhooks and deliveries
+
+| Method and route | Purpose |
+|---|---|
+| `POST /api/v1/watchlists/{watchlist_id}/webhooks` | Create a subscription. |
+| `GET /api/v1/watchlists/{watchlist_id}/webhooks` | List subscriptions. |
+| `DELETE /api/v1/webhooks/{subscription_id}` | Disable and remove a subscription. |
+| `POST /api/v1/webhooks/{subscription_id}/test` | Send a validation event. |
+| `GET /api/v1/webhooks/{subscription_id}/deliveries` | Inspect deliveries and attempts. |
+| `POST /api/v1/deliveries/{delivery_id}/replay` | Safely replay a terminal failed delivery. |
+
+Example change-event payload:
 
 ```json
 {
-  "series_ids": ["CPIAUCSL", "UNRATE", "FEDFUNDS"],
-  "as_of": "2020-01-01T00:00:00Z",
-  "observation_start": "2015-01-01",
-  "observation_end": "2019-12-31"
+  "event_id": "evt_01JREVISIONEXAMPLE",
+  "event_type": "observation.revised",
+  "occurred_at": "2026-11-02T08:30:05Z",
+  "series": {
+    "id": "CPIAUCSL",
+    "title": "Consumer Price Index",
+    "units": "Index 1982-1984=100",
+    "frequency": "Monthly"
+  },
+  "observation": {
+    "period": "2026-09-01",
+    "previous_value": "325.3",
+    "new_value": "325.5",
+    "change": "0.2"
+  }
 }
 ```
 
-Example change response:
+Webhook headers include an event ID, delivery ID, timestamp, signature version, and HMAC signature. Receivers verify the signature over the timestamp and raw request body.
 
-```json
-{
-  "sync_run_id": "01JREVISIONEXAMPLE",
-  "series_id": "GDP",
-  "changes": [
-    {
-      "type": "new",
-      "period": "2026-07-01",
-      "previous_value": null,
-      "new_value": "2.1",
-      "change": null
-    },
-    {
-      "type": "revised",
-      "period": "2026-04-01",
-      "previous_value": "1.8",
-      "new_value": "1.6",
-      "change": "-0.2"
-    }
-  ]
-}
-```
+### 3.4 API behavior
 
-Decimals are encoded as strings at the API boundary so clients do not silently lose precision.
-
-### 3.2 API behavior
-
-- `POST /sync` returns `201 Created` after a synchronous MVP run. A later queued implementation can return `202 Accepted` without changing the resource model.
-- A caller-supplied `Idempotency-Key` is accepted on mutation endpoints.
-- Invalid dates, ranges, formats, and series IDs return `422` or `404` with machine-readable error codes.
-- Collection endpoints use an opaque cursor plus a bounded `limit` rather than unbounded responses.
-- Snapshot creation returns an existing snapshot when the same owner, selection criteria, and content already exist.
-- Exports include a schema/format version so future readers can interpret older files.
-
-### 3.3 Later endpoints
-
-```text
-POST   /api/v1/watchlists
-GET    /api/v1/watchlists/{watchlist_id}
-POST   /api/v1/webhook-subscriptions
-GET    /api/v1/webhook-subscriptions/{subscription_id}/deliveries
-POST   /api/v1/deliveries/{delivery_id}/retry
-```
-
-These routes require authentication and ownership checks; they are not part of the MVP.
+- Mutation endpoints accept an `Idempotency-Key` where client retries are expected.
+- The stable production sync contract returns `202 Accepted` with a job or run resource.
+- Invalid dates, URLs, filters, and series IDs produce machine-readable errors.
+- Replay creates a new attempt for the existing logical delivery, not a second economic event.
+- Authorization checks ownership before revealing callback or delivery information.
 
 ## 4: High-level design
 
-### 4.1 MVP architecture
+### 4.1 Local product architecture
 
 ```mermaid
 flowchart LR
-    Client[API client] --> API[FastAPI application]
-    API --> Catalog[Series service]
-    API --> Sync[Synchronization service]
-    API --> Snapshot[Point-in-time and snapshot service]
-    Sync --> Provider[Provider interface]
-    Provider --> FRED[FRED API]
-    Sync --> Diff[Diff engine]
-    Sync --> DB[(PostgreSQL)]
-    Catalog --> DB
-    Snapshot --> DB
-    Snapshot --> Export[JSON / CSV export]
+    Client[API client] --> API[FastAPI]
+    API --> DB[(PostgreSQL)]
+    API --> IQ[Local ingestion queue]
+
+    Scheduler[Scheduler] --> IQ
+    IQ --> IW[Ingestion worker]
+    IW --> FRED[FRED API or fixture provider]
+    IW --> Diff[Diff engine]
+    IW --> DB
+
+    DB --> Router[Event router]
+    Router --> NQ[Local notification queue]
+    NQ --> NW[Webhook worker]
+    NW --> Receiver[Webhook receiver]
+    NW --> DB
 ```
 
-The MVP performs a manual synchronization within the API process. This is simpler to build and debug. Its interfaces are designed so the synchronization service can later run unchanged inside a worker.
+The local queue is replaceable. Domain and service layers do not import SQS-specific types, so the same workers can later use AWS.
 
-### 4.2 Synchronization data flow
+### 4.2 Event flow
 
 ```mermaid
 sequenceDiagram
-    participant C as Client
-    participant A as FastAPI
-    participant S as Sync service
-    participant F as FRED client
-    participant D as Diff engine
-    participant P as PostgreSQL
+    participant S as Scheduler
+    participant Q as Ingestion queue
+    participant W as Ingestion worker
+    participant F as FRED
+    participant D as PostgreSQL
+    participant N as Notification queue
+    participant H as Webhook receiver
 
-    C->>A: POST /series/CPIAUCSL/sync
-    A->>S: synchronize(series)
-    S->>F: fetch metadata and observations
-    F-->>S: normalized observations
-    S->>P: load latest stored versions
-    P-->>S: current versions
-    S->>D: compare(current, incoming)
-    D-->>S: classified differences
-    S->>P: begin transaction
-    S->>P: insert new versions, changes, run result
-    S->>P: commit
-    S-->>A: sync summary
-    A-->>C: 201 Created
+    S->>Q: enqueue deterministic series job
+    Q->>W: deliver job
+    W->>F: fetch normalized observations
+    W->>D: load latest versions
+    W->>D: transaction: versions + events + run
+    W->>N: enqueue event deliveries
+    N->>H: signed POST
+    alt success
+        H-->>N: 2xx
+        N->>D: record success attempt
+    else transient failure
+        H-->>N: timeout or retryable status
+        N->>D: record failed attempt
+        N->>N: schedule backoff or dead-letter
+    end
 ```
 
-### 4.3 Production evolution
+### 4.3 Production AWS architecture
 
 ```mermaid
 flowchart LR
-    User[Users and applications] --> LB[Load balancer]
+    User[Users and applications] --> LB[Application Load Balancer]
     LB --> API[FastAPI on ECS Fargate]
     API --> RDS[(RDS PostgreSQL)]
-    API --> S3[(S3 snapshot exports)]
 
-    EB[EventBridge schedule] --> IQ[SQS ingestion queue]
-    IQ --> Worker[Ingestion workers]
-    Worker --> FRED[FRED API]
-    Worker --> RDS
-    Worker --> NQ[SQS notification queue]
-    NQ --> Delivery[Notification workers]
-    Delivery --> Hooks[Email / webhooks]
+    EB[EventBridge schedules] --> IQ[SQS ingestion queue]
+    IQ --> IW[ECS ingestion workers]
+    IW --> FRED[FRED API]
+    IW --> RDS
+    IW --> NQ[SQS notification queue]
 
-    API --> CW[CloudWatch]
-    Worker --> CW
-    Delivery --> CW
+    NQ --> NW[ECS delivery workers]
+    NW --> Hooks[Subscriber webhooks]
+    NW --> RDS
+
+    IQ --> IDLQ[Ingestion DLQ]
+    NQ --> NDLQ[Notification DLQ]
     SM[Secrets Manager] --> API
-    SM --> Worker
+    SM --> IW
+    SM --> NW
+    API --> CW[CloudWatch]
+    IW --> CW
+    NW --> CW
 ```
 
-Scheduled work is queued by series. API instances, ingestion workers, and notification workers can scale independently. Failed jobs move to dead-letter queues for inspection and replay.
+API tasks, ingestion workers, and delivery workers scale independently. SQS provides at-least-once delivery, so application idempotency remains mandatory.
 
 ## 5: Deep dive into non-functional requirements
 
-### 5.1 Correct version history and temporal semantics
+### 5.1 Correct revision detection
 
-The system distinguishes three times:
+The system distinguishes the observation period, provider vintage/realtime dates, and when MacroMonitor first observed a version. These timestamps have different meanings.
 
-1. **Observation period** — the month, quarter, or date the economic value describes.
-2. **Provider vintage/realtime date** — when the provider says that version was valid.
-3. **First observed at** — when this platform retrieved that version.
+Incoming values are normalized before comparison: decimal strings become `Decimal`, provider markers become an explicit missing state, dates use one representation, and metadata follows documented normalization rules. A revision occurs only when canonical content materially differs.
 
-They must not be collapsed into one timestamp. Point-in-time queries initially mean “known by this platform at `as_of`,” using `first_observed_at`. Provider vintage dates remain available for provider-defined historical analysis.
+### 5.2 Idempotency at every boundary
 
-For each `(series_id, observation_period)`, the query selects the version with the greatest `first_observed_at` that is less than or equal to `as_of`. A covering index beginning with series, period, and descending observation time supports this access pattern.
+Observation versions receive a fingerprint from stable provider, series, period, value/missing state, and vintage fields. A unique constraint is the final duplicate defense.
 
-### 5.2 Idempotency and duplicate prevention
+Change events use a deterministic identity derived from series, incoming version, previous version, and change type. Ingestion jobs use a series and schedule-window identity. Logical webhook deliveries are unique by event and subscription. Queue redelivery may create another attempt, but never another logical delivery.
 
-Each normalized observation receives a fingerprint from stable fields such as provider, series ID, period, normalized value/missing state, and provider vintage dates.
+API idempotency records bind a client key to a request fingerprint and result. Reusing a key with different content is rejected.
 
-A unique database constraint on the natural version identity or fingerprint prevents duplicate versions even if application checks race. Sync writes use `INSERT ... ON CONFLICT`-style behavior where appropriate.
+### 5.3 Transactions and concurrency
 
-For API retries, an `Idempotency-Key` record stores the request fingerprint and completed resource ID. Reusing the same key with different request content is rejected.
+Provider calls occur before the database transaction so slow requests do not hold locks. One transaction writes new versions, change events, final run status and counts, and relevant metadata. Any failure rolls back the set.
 
-Later, queued jobs have deterministic job identities such as `(series_id, scheduled_window)`. SQS may deliver a message more than once, so workers remain idempotent instead of assuming exactly-once delivery.
+Only one worker may compare and commit a given series at a time, enforced with a PostgreSQL advisory lock or locked series row.
 
-### 5.3 Transactional consistency and concurrency
+Notification failure never rolls back economic data. To avoid the database-commit/queue-publish gap, production uses a transactional outbox: routing records commit with the change, then a publisher forwards unsent records to SQS.
 
-One database transaction contains:
+### 5.4 Reliable provider calls
 
-- newly discovered observation versions;
-- change rows;
-- snapshot-independent series metadata updates; and
-- the final successful sync-run status and counts.
+FRED calls use connection and response timeouts. Only timeouts, rate limits, and selected server failures are retried with bounded exponential backoff and jitter. Authentication errors and invalid series IDs fail without blind retry.
 
-If any write fails, all these changes roll back. Provider network calls happen before opening the transaction so a slow API does not hold database locks.
+A failed run records a sanitized error and does not modify the last successful state. Stored history remains readable during provider outages.
 
-Only one active sync per series should compare and commit at a time. The MVP can use a PostgreSQL advisory lock or locked series row. Later workers retain the same database-level protection because queue visibility alone cannot prevent every race.
+### 5.5 Reliable webhook delivery
 
-### 5.4 Reliable provider integration
+Webhook delivery is at least once. A receiver may process a request and fail before responding, so MacroMonitor cannot promise exactly one HTTP request.
 
-Provider calls have connection and response timeouts. Retries are limited to transient failures such as timeouts, `429`, and selected `5xx` responses, with exponential backoff and jitter. Authentication failures and invalid series IDs are not retried blindly.
+Instead, retries reuse stable event and delivery IDs, payloads are deterministic, and receivers deduplicate by event ID. Retryable results include timeouts, connection failures, `408`, `429`, and selected `5xx` responses. Most other `4xx` responses are terminal.
 
-The service records a failed sync run with a sanitized error category. Previously stored reads and snapshot exports remain available during a FRED outage.
+Exhausted deliveries enter a dead-letter state. Authorized replay retains the original event identity and creates a new attempt record.
 
-A circuit breaker is unnecessary for the MVP. It becomes useful only if repeated provider failures consume worker capacity in production.
-
-### 5.5 Query performance and growth
+### 5.6 Performance and database growth
 
 Likely indexes include:
 
-- unique provider plus provider series ID on `series`;
+- unique provider and provider-series ID on `series`;
 - series, period, and descending first-observed time on `observation_versions`;
+- unique version fingerprint;
 - series and descending start time on `sync_runs`;
-- sync-run ID and type on `changes`;
-- snapshot ID on `snapshot_items`.
+- watchlist and series on memberships;
+- event type and occurrence time on `change_events`;
+- unique event and subscription on `deliveries`;
+- delivery and attempt number on `delivery_attempts`.
 
-The API uses keyset/cursor pagination for large histories. Snapshot exports are streamed rather than loaded entirely into memory.
-
-Partitioning is not an MVP requirement. If measured table and index growth justifies it, `observation_versions` can later be partitioned by series hash or observation year without changing domain behavior. Read replicas and caching are similarly measurement-driven later optimizations.
-
-### 5.6 Deterministic snapshots and checksums
-
-Snapshot creation runs in a transaction with a stable database view. It stores exact observation-version IDs rather than a query that could return different results later.
-
-Checksum input uses a documented canonical JSON representation:
-
-- fixed schema version;
-- UTF-8 encoding;
-- lexicographically sorted series and chronological observations;
-- normalized decimal strings;
-- normalized UTC timestamps;
-- explicit `null` values where required; and
-- no non-deterministic fields such as export time.
-
-The SHA-256 checksum covers the canonical dataset and required metadata. JSON and CSV are presentation formats; the same canonical logical content is used for verification.
+Large feeds use keyset pagination. Workers process bounded batches and cap HTTP connection pools. Partitioning, caching, and read replicas are added only after measurement shows a need.
 
 ### 5.7 Security
 
-The FRED key and database password come from environment variables locally and Secrets Manager in production. Logs must redact credentials, authorization headers, webhook secrets, and potentially sensitive URLs.
+Credentials and webhook secrets come from environment variables or Secrets Manager. Webhook signing uses versioned HMAC over the timestamp and raw body; receivers reject stale timestamps and compare signatures in constant time.
 
-Inputs use allow-listed formats and bounded sizes. SQLAlchemy parameterization prevents string-built SQL. Export filenames and response headers are generated by the service rather than copied from arbitrary user input.
+Callback handling must defend against server-side request forgery: production requires HTTPS; private, loopback, link-local, and cloud-metadata destinations are rejected; redirects and DNS resolution follow a documented policy; response sizes are bounded.
 
-Later authentication uses short-lived tokens and ownership checks on watchlists, snapshots, and webhook subscriptions. Webhooks are signed with an HMAC secret, include a timestamp and event ID, and document replay protection.
+Authentication uses short-lived credentials. Every watchlist, subscription, delivery read, and replay checks ownership or administrative role. Logs redact secrets, tokens, headers, signatures, and sensitive callback parameters.
 
 ### 5.8 Availability and graceful degradation
 
-The database is the system of record. The API can serve catalog, history, point-in-time, and snapshot reads when FRED is down. Only new synchronization is impaired.
+PostgreSQL is the system of record. FRED downtime prevents fresh synchronization but not reads. Receiver downtime delays notifications but does not affect ingestion.
 
-Production deployments use multiple stateless API tasks across availability zones and managed PostgreSQL backups. Queues absorb temporary downstream outages. Notification failure does not roll back already committed economic data.
+Queues buffer transient failures, and dead-letter queues isolate poison messages. Production runs multiple stateless API tasks across availability zones and uses managed database backups.
 
-Recovery goals should be chosen before deployment rather than invented afterward. A reasonable initial portfolio target is an RPO of 24 hours and an RTO of 4 hours, then tightened if real users require it.
+A reasonable initial portfolio target is a 24-hour recovery point objective and four-hour recovery time objective, refined if real usage requires more.
 
-### 5.9 Observability and operations
+### 5.9 Observability
 
-Every request and job carries a correlation ID. Structured logs include series ID, sync-run ID, snapshot ID, duration, outcome, and error category, but not secrets or full provider payloads.
+Correlation IDs connect:
 
-Important metrics include:
+```text
+schedule -> ingestion job -> sync run -> change event
+         -> logical delivery -> delivery attempts
+```
 
-- synchronization success and failure counts;
-- provider latency and rate-limit responses;
-- new and revised observation counts;
-- queue age and dead-letter count;
-- webhook success rate and retry count;
-- API latency and error rate; and
-- database connection and query latency.
+Metrics cover API latency and errors, FRED latency and rate limits, last successful sync age, revision counts, queue age, webhook success and retries, dead letters, and database latency.
 
-Alerts should focus on user impact: repeated ingestion failures, stale critical series, old queued work, dead-letter messages, and sustained API errors. A runbook explains diagnosis and safe replay.
+Alerts target sustained impact: stale watched series, repeated provider failures, growing queue age, dead-letter messages, and elevated API or delivery errors.
 
 ### 5.10 Testing strategy
 
-The diff engine and canonical serializer receive fast unit tests covering new, revised, unchanged, missing, precision, ordering, and boundary-time cases.
+Unit tests cover normalization, classifications, fingerprints, signatures, retry decisions, and backoff boundaries.
 
-PostgreSQL integration tests verify unique constraints, transactions, locks, and point-in-time queries. API tests verify schemas, pagination, status codes, and idempotency. Recorded/fake provider fixtures make CI independent of live FRED availability.
+PostgreSQL integration tests verify constraints, transactions, locks, revision queries, ownership, and the outbox. API tests verify validation, pagination, idempotency, authorization, and error envelopes.
 
-A smaller number of end-to-end tests start the service and database, execute two fixture releases, verify the revision through HTTP, create a snapshot, and validate its checksum. Production smoke tests remain read-only except for a dedicated test series or account.
+Fake FRED fixtures simulate releases, revisions, removals, missing values, metadata changes, timeouts, and rate limits. A local receiver simulates success, timeout, retryable failure, permanent failure, and delayed recovery.
+
+End-to-end tests execute:
+
+```text
+watchlist -> scheduled fixture sync -> revision event
+          -> signed webhook -> failure/retry -> success or dead letter
+```
+
+CI never depends on a live FRED response or public webhook receiver.
