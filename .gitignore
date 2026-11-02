@@ -10,6 +10,8 @@ __pycache__/
 *.egg-info/
 *.py[cod]
 .coverage
+build/
 coverage.xml
+dist/
 htmlcov/
 
