@@ -13,6 +13,24 @@ jobs:
     name: Lint, type-check, and test
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      MACROMONITOR_DATABASE_URL: postgresql+psycopg://macromonitor:macromonitor@localhost:5432/macromonitor_test
+      MACROMONITOR_TEST_DATABASE_URL: postgresql+psycopg://macromonitor:macromonitor@localhost:5432/macromonitor_test
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: macromonitor_test
+          POSTGRES_PASSWORD: macromonitor
+          POSTGRES_USER: macromonitor
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U macromonitor -d macromonitor_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
 
     steps:
       - name: Check out repository
@@ -40,8 +58,18 @@ jobs:
       - name: Type-check
         run: mypy src tests
 
+      - name: Apply and verify database migration
+        run: |
+          alembic upgrade head
+          alembic check
+
       - name: Test
         run: pytest --cov=macromonitor --cov-report=term-missing --cov-report=xml
+
+      - name: Verify migration round trip
+        run: |
+          alembic downgrade base
+          alembic upgrade head
 
   container:
     name: Validate container configuration
