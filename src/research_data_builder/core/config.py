@@ -30,6 +30,8 @@ class Settings(BaseSettings):
         min_length=1,
     )
     fred_api_key: SecretStr | None = None
+    provider_http_timeout_seconds: float = Field(default=15.0, gt=0, le=120)
+    provider_http_max_attempts: int = Field(default=3, ge=1, le=10)
 
     @field_validator("log_level")
     @classmethod

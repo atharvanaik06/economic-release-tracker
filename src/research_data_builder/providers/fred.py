@@ -34,7 +34,7 @@ class FredConnector:
         entity_catalog=False,
         date_filtering=True,
         geographic_filtering=False,
-        revisions=True,
+        revisions=False,
     )
     page_size = 1_000
 
