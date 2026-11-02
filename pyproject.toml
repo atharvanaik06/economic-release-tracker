@@ -12,6 +12,7 @@ authors = [{ name = "Atharva Naik" }]
 dependencies = [
     "alembic>=1.14,<2",
     "fastapi>=0.115,<1",
+    "httpx>=0.28,<1",
     "psycopg[binary]>=3.2,<4",
     "pydantic-settings>=2.7,<3",
     "sqlalchemy[asyncio]>=2.0,<3",
@@ -20,7 +21,6 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "httpx>=0.28,<1",
     "mypy>=1.14,<2",
     "pytest>=8.3,<10",
     "pytest-cov>=6,<8",
