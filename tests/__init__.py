@@ -1,0 +1,1 @@
+"""MacroMonitor test suite."""

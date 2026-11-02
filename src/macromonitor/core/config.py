@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     environment: Environment = "development"
     log_level: str = "INFO"
     database_url: str = Field(
-        default="postgresql://macromonitor:macromonitor@localhost:5432/macromonitor",
+        default="postgresql+psycopg://macromonitor:macromonitor@localhost:5432/macromonitor",
         min_length=1,
     )
     fred_api_key: SecretStr | None = None

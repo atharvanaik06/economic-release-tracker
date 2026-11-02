@@ -5,7 +5,7 @@ services:
     build:
       context: .
     environment:
-      MACROMONITOR_DATABASE_URL: postgresql://${POSTGRES_USER:-macromonitor}:${POSTGRES_PASSWORD:-macromonitor}@postgres:5432/${POSTGRES_DB:-macromonitor}
+      MACROMONITOR_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-macromonitor}:${POSTGRES_PASSWORD:-macromonitor}@postgres:5432/${POSTGRES_DB:-macromonitor}
       MACROMONITOR_ENVIRONMENT: development
       MACROMONITOR_LOG_LEVEL: INFO
     ports:

@@ -5,6 +5,7 @@ from fastapi import FastAPI
 
 from macromonitor.core.config import Settings
 from macromonitor.main import create_app
+from tests.fakes import FakeDatabase
 
 
 @pytest.fixture
@@ -19,6 +20,12 @@ def test_settings() -> Settings:
 
 
 @pytest.fixture
-def app(test_settings: Settings) -> FastAPI:
+def database() -> FakeDatabase:
+    """Return an available fake database."""
+    return FakeDatabase()
+
+
+@pytest.fixture
+def app(test_settings: Settings, database: FakeDatabase) -> FastAPI:
     """Return an isolated application instance."""
-    return create_app(test_settings)
+    return create_app(test_settings, database)
