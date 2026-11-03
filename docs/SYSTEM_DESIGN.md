@@ -135,10 +135,10 @@ Routes are versioned under `/api/v1`. Timestamps use ISO 8601 UTC. Decimal value
 | `POST /api/v1/recipes` | Create a draft recipe. |
 | `GET /api/v1/recipes` | List accessible recipes. |
 | `GET /api/v1/recipes/{recipe_id}` | Return the current draft and latest version. |
-| `PATCH /api/v1/recipes/{recipe_id}` | Update the draft. |
-| `POST /api/v1/recipes/{recipe_id}/validate` | Validate without freezing. |
+| `PUT /api/v1/recipes/{recipe_id}/draft` | Replace the validated draft. |
 | `POST /api/v1/recipes/{recipe_id}/versions` | Freeze an immutable version. |
 | `GET /api/v1/recipes/{recipe_id}/versions` | List recipe history. |
+| `GET /api/v1/recipe-versions/{version_id}/export` | Export a frozen version as JSON or YAML. |
 
 ### 3.3 Builds and outputs
 
@@ -158,7 +158,8 @@ Routes are versioned under `/api/v1`. Timestamps use ISO 8601 UTC. Decimal value
 {
   "name": "european_macro_panel",
   "entities": ["CZE", "DEU", "FRA", "POL"],
-  "period": {"start": "2000", "end": "2025"},
+  "start_date": "2000-01-01",
+  "end_date": "2025-12-31",
   "variables": [
     {
       "provider": "world_bank",
@@ -172,6 +173,7 @@ Routes are versioned under `/api/v1`. Timestamps use ISO 8601 UTC. Decimal value
     }
   ],
   "output_frequency": "annual",
+  "transformations": [],
   "join": {"keys": ["entity", "period"], "type": "outer"},
   "missing_values": {"policy": "preserve"},
   "formats": ["csv", "parquet"]

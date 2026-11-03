@@ -106,9 +106,11 @@ Demo: request equivalent indicator metadata and normalized observations from two
 
 ## Phase 4: Add versioned dataset recipes and build planning
 
+**Status:** complete.
+
 **Goal:** turn a research question into a validated, immutable build plan.
 
-Deliverables:
+Delivered:
 
 - Dataset recipe, recipe-version, variable, and transformation schema.
 - Recipe YAML/JSON import and export.
@@ -118,6 +120,17 @@ Deliverables:
 - Build-run and build-input records.
 - Recipe and build API endpoints.
 - Migration and repository tests.
+
+Implementation notes:
+
+- Unknown recipe fields are rejected rather than silently ignored.
+- Recipe drafts are editable; frozen versions are immutable and numbered.
+- Freezing identical content reuses the existing content-addressed version.
+- Variables and transformation declarations retain stable order.
+- Provider resolution happens outside database transactions.
+- A build identity includes frozen recipe content, planner version, resolved requests, and normalized indicator metadata.
+- Replanning identical inputs reuses the existing planned build.
+- Plans do not yet retrieve or transform observations; that begins in Phase 5.
 
 Likely commits:
 

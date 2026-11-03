@@ -56,9 +56,9 @@ Immutable differences between provider input versions. They support source-refre
 Build B differs because 14 provider observations changed after Build A.
 ```
 
-## Planned product schema
+## Implemented recipe and planning schema
 
-Later migrations add:
+Phase 4 adds:
 
 ```text
 dataset_recipes
@@ -67,8 +67,7 @@ dataset_recipes
     ├── transformation_steps
     └── build_runs
         ├── build_inputs
-        ├── validation_results
-        └── exports
+        └── build_inputs
 ```
 
 ### Dataset recipes and versions
@@ -78,6 +77,12 @@ Draft recipes are editable. Recipe versions are immutable and contain the comple
 ### Build runs and inputs
 
 A build references one recipe version plus the exact provider retrievals or observation versions used. Its deterministic identity prevents duplicate logical builds.
+
+The Phase 4 `build_inputs` records are resolved requests and indicator metadata fingerprints. Exact
+retrieved observation-version lineage is added when Phase 5 executes plans and Phase 6 records full
+provenance.
+
+## Later product records
 
 ### Validation and lineage
 

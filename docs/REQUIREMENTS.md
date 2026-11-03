@@ -27,7 +27,8 @@ With Research Data Builder, the researcher saves a recipe:
 ```yaml
 name: european_macro_panel
 entities: [CZE, DEU, FRA, POL]
-period: { start: 2000, end: 2025 }
+start_date: 2000-01-01
+end_date: 2025-12-31
 variables:
   - provider: world_bank
     indicator: NY.GDP.MKTP.KD.ZG
@@ -35,9 +36,8 @@ variables:
   - provider: world_bank
     indicator: FP.CPI.TOTL.ZG
     name: inflation
-output:
-  frequency: annual
-  formats: [csv, parquet]
+output_frequency: annual
+formats: [csv, parquet]
 ```
 
 One deterministic build produces data, documentation, validation, provenance, and checksums.
@@ -190,10 +190,12 @@ GET    /api/v1/providers/{provider_id}/indicators/{indicator_id}
 POST   /api/v1/recipes
 GET    /api/v1/recipes
 GET    /api/v1/recipes/{recipe_id}
-PATCH  /api/v1/recipes/{recipe_id}
+PUT    /api/v1/recipes/{recipe_id}/draft
+POST   /api/v1/recipes/import
 POST   /api/v1/recipes/{recipe_id}/versions
 GET    /api/v1/recipes/{recipe_id}/versions
-POST   /api/v1/recipes/{recipe_id}/validate
+GET    /api/v1/recipe-versions/{version_id}
+GET    /api/v1/recipe-versions/{version_id}/export
 
 POST   /api/v1/recipe-versions/{version_id}/builds
 GET    /api/v1/builds/{build_id}

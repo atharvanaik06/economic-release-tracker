@@ -51,7 +51,7 @@ Authentication, a browser interface, background queues, cloud storage, additiona
 
 ## Current foundation
 
-Phases 1 through 3 are complete:
+Phases 1 through 4 are complete:
 
 - FastAPI application, validated settings, and structured logging;
 - Docker and PostgreSQL local stack;
@@ -64,6 +64,12 @@ Phases 1 through 3 are complete:
 - shared HTTP timeouts, bounded retries, rate-limit handling, and typed failures;
 - idempotent provider catalog refresh with stable metadata fingerprints;
 - fixture-driven connector tests that never require live provider availability;
+- strict dataset recipes with safe JSON/YAML import and export;
+- editable drafts and immutable, content-addressed recipe versions;
+- normalized recipe variables and ordered transformation declarations;
+- provider metadata resolution and deterministic build-plan identities;
+- idempotent planned builds with exact provider requests and metadata fingerprints;
+- versioned recipe and build-planning API routes;
 - PostgreSQL integration tests for decimal precision, constraints, ordering, and rollback.
 
 These existing tables form the provider-data and provenance foundation. Dataset recipes, builds, validation results, and export metadata are added in later phases.
@@ -108,8 +114,9 @@ docker compose up --build
 - [Phased build and commit plan](docs/ROADMAP.md)
 - [Database design and migrations](docs/DATABASE.md)
 - [Provider connectors](docs/PROVIDERS.md)
+- [Recipe and build planning](docs/RECIPES.md)
 - [Development guide](docs/DEVELOPMENT.md)
 
 ## Current status
 
-The provider connector layer is complete. The next phase introduces versioned dataset recipes and deterministic build planning.
+Versioned recipe and deterministic build planning are complete. The next phase implements the harmonization and transformation engine that turns a plan into a research table.

@@ -74,9 +74,9 @@ database operations; connector code never commits a transaction.
 
 ## Current boundary
 
-Phase 3 is an internal connector and service layer. Public provider routes are still part of the
-planned API surface, not implemented endpoints. Phase 4 will use these connectors when resolving
-versioned recipe inputs and build plans.
+Phase 3 is the internal connector and service layer. Phase 4 now uses these connectors to resolve
+versioned recipe inputs and build plans. Dedicated provider-search HTTP routes remain part of the
+planned API surface; build planning currently performs exact indicator resolution internally.
 
 All connector tests use `httpx.MockTransport` fixtures. CI therefore tests pagination, missing
 values, rate limits, retries, malformed responses, filters, and catalog idempotency without relying
