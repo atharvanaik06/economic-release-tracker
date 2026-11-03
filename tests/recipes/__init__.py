@@ -1,0 +1,1 @@
+"""Recipe domain tests."""
