@@ -45,6 +45,18 @@ class ChangeType(StrEnum):
     METADATA_CHANGED = "metadata_changed"
 
 
+class BuildStatus(StrEnum):
+    """Lifecycle states for a dataset build."""
+
+    PLANNED = "planned"
+    RETRIEVING = "retrieving"
+    TRANSFORMING = "transforming"
+    VALIDATING = "validating"
+    EXPORTING = "exporting"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
 def enum_values(enum_type: type[StrEnum]) -> list[str]:
     """Persist string-enum values instead of Python member names."""
     return [member.value for member in enum_type]
@@ -222,3 +234,158 @@ class ChangeEvent(Base):
         foreign_keys=[previous_version_id]
     )
     new_version: Mapped[ObservationVersion | None] = relationship(foreign_keys=[new_version_id])
+
+
+class DatasetRecipe(Base):
+    """Editable dataset definition whose versions are frozen for builds."""
+
+    __tablename__ = "dataset_recipes"
+    __table_args__ = (
+        CheckConstraint("length(name) > 0", name="recipe_name_not_empty"),
+        CheckConstraint("length(draft_hash) = 64", name="recipe_draft_hash_length"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(String(1000))
+    draft_content: Mapped[dict[str, Any]] = mapped_column(JSON)
+    draft_hash: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    versions: Mapped[list["RecipeVersion"]] = relationship(back_populates="recipe")
+
+
+class RecipeVersion(Base):
+    """Immutable numbered snapshot of one validated recipe draft."""
+
+    __tablename__ = "recipe_versions"
+    __table_args__ = (
+        UniqueConstraint("recipe_id", "version_number", name="uq_recipe_versions_number"),
+        UniqueConstraint("recipe_id", "content_hash", name="uq_recipe_versions_content"),
+        CheckConstraint("version_number > 0", name="recipe_version_positive"),
+        CheckConstraint("length(content_hash) = 64", name="recipe_content_hash_length"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    recipe_id: Mapped[UUID] = mapped_column(
+        ForeignKey("dataset_recipes.id", ondelete="RESTRICT"), nullable=False
+    )
+    version_number: Mapped[int] = mapped_column(Integer)
+    content: Mapped[dict[str, Any]] = mapped_column(JSON)
+    content_hash: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    recipe: Mapped[DatasetRecipe] = relationship(back_populates="versions")
+    variables: Mapped[list["RecipeVariable"]] = relationship(back_populates="recipe_version")
+    transformation_steps: Mapped[list["TransformationStep"]] = relationship(
+        back_populates="recipe_version"
+    )
+    build_runs: Mapped[list["BuildRun"]] = relationship(back_populates="recipe_version")
+
+
+class RecipeVariable(Base):
+    """One ordered provider input selected by a frozen recipe version."""
+
+    __tablename__ = "recipe_variables"
+    __table_args__ = (
+        UniqueConstraint("recipe_version_id", "position", name="uq_recipe_variables_position"),
+        UniqueConstraint(
+            "recipe_version_id", "output_name", name="uq_recipe_variables_output_name"
+        ),
+        CheckConstraint("position >= 0", name="recipe_variable_position_nonnegative"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    recipe_version_id: Mapped[UUID] = mapped_column(
+        ForeignKey("recipe_versions.id", ondelete="RESTRICT"), nullable=False
+    )
+    position: Mapped[int] = mapped_column(Integer)
+    provider: Mapped[str] = mapped_column(String(32))
+    indicator_id: Mapped[str] = mapped_column(String(128))
+    output_name: Mapped[str] = mapped_column(String(128))
+    parameters: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+    recipe_version: Mapped[RecipeVersion] = relationship(back_populates="variables")
+
+
+class TransformationStep(Base):
+    """One ordered deterministic transformation declared by a recipe."""
+
+    __tablename__ = "transformation_steps"
+    __table_args__ = (
+        UniqueConstraint("recipe_version_id", "position", name="uq_transformation_steps_position"),
+        CheckConstraint("position >= 0", name="transformation_position_nonnegative"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    recipe_version_id: Mapped[UUID] = mapped_column(
+        ForeignKey("recipe_versions.id", ondelete="RESTRICT"), nullable=False
+    )
+    position: Mapped[int] = mapped_column(Integer)
+    operation: Mapped[str] = mapped_column(String(64))
+    parameters: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+    recipe_version: Mapped[RecipeVersion] = relationship(back_populates="transformation_steps")
+
+
+class BuildRun(Base):
+    """One deterministic plan or execution of a frozen recipe version."""
+
+    __tablename__ = "build_runs"
+    __table_args__ = (
+        UniqueConstraint("build_identity", name="uq_build_runs_identity"),
+        CheckConstraint("length(build_identity) = 64", name="build_identity_length"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    recipe_version_id: Mapped[UUID] = mapped_column(
+        ForeignKey("recipe_versions.id", ondelete="RESTRICT"), nullable=False
+    )
+    status: Mapped[BuildStatus] = mapped_column(
+        Enum(
+            BuildStatus,
+            name="build_status",
+            native_enum=False,
+            create_constraint=True,
+            values_callable=enum_values,
+        ),
+        default=BuildStatus.PLANNED,
+    )
+    build_identity: Mapped[str] = mapped_column(String(64))
+    plan: Mapped[dict[str, Any]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    error_message: Mapped[str | None] = mapped_column(String(512))
+
+    recipe_version: Mapped[RecipeVersion] = relationship(back_populates="build_runs")
+    inputs: Mapped[list["BuildInput"]] = relationship(back_populates="build_run")
+
+
+class BuildInput(Base):
+    """Resolved provider request and metadata used to create a build plan."""
+
+    __tablename__ = "build_inputs"
+    __table_args__ = (
+        UniqueConstraint("build_run_id", "output_name", name="uq_build_inputs_output_name"),
+        CheckConstraint(
+            "length(indicator_fingerprint) = 64", name="build_input_fingerprint_length"
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    build_run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("build_runs.id", ondelete="RESTRICT"), nullable=False
+    )
+    output_name: Mapped[str] = mapped_column(String(128))
+    provider: Mapped[str] = mapped_column(String(32))
+    indicator_id: Mapped[str] = mapped_column(String(128))
+    request: Mapped[dict[str, Any]] = mapped_column(JSON)
+    indicator_metadata: Mapped[dict[str, Any]] = mapped_column(JSON)
+    indicator_fingerprint: Mapped[str] = mapped_column(String(64))
+
+    build_run: Mapped[BuildRun] = relationship(back_populates="inputs")
