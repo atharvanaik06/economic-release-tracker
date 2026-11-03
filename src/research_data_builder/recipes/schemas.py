@@ -121,4 +121,10 @@ class RecipeDefinition(StrictModel):
             raise ValueError("formats must be non-empty and unique")
         if self.join.keys == ("entity", "period") and not self.entities:
             raise ValueError("entity-period joins require at least one entity")
+        if self.join.keys == ("entity", "period") and any(
+            variable.provider is DataProvider.FRED for variable in self.variables
+        ):
+            raise ValueError(
+                "FRED variables do not have an entity dimension; use period-only joins"
+            )
         return self
