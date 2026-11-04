@@ -32,6 +32,17 @@ class ResolvedBuildInput:
             "indicator_fingerprint": self.indicator_fingerprint,
         }
 
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ResolvedBuildInput":
+        return cls(
+            output_name=str(payload["output_name"]),
+            provider=str(payload["provider"]),
+            indicator_id=str(payload["indicator_id"]),
+            request=dict(payload["request"]),
+            indicator_metadata=dict(payload["indicator_metadata"]),
+            indicator_fingerprint=str(payload["indicator_fingerprint"]),
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class BuildPlan:
@@ -51,6 +62,16 @@ class BuildPlan:
             "planner_version": self.planner_version,
             "inputs": [item.as_dict() for item in self.inputs],
         }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "BuildPlan":
+        return cls(
+            recipe_version_id=str(payload["recipe_version_id"]),
+            recipe_content_hash=str(payload["recipe_content_hash"]),
+            build_identity=str(payload["build_identity"]),
+            planner_version=str(payload["planner_version"]),
+            inputs=tuple(ResolvedBuildInput.from_dict(dict(item)) for item in payload["inputs"]),
+        )
 
 
 class BuildPlanner:

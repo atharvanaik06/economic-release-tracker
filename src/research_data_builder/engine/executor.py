@@ -1,0 +1,108 @@
+"""Execute a resolved build plan into one deterministic research table."""
+
+from datetime import date
+from typing import cast
+
+import polars as pl
+
+from research_data_builder.db.models import RecipeVersion
+from research_data_builder.engine.frequency import AggregationMethod, convert_frequency
+from research_data_builder.engine.harmonize import ENTITY_MAPPING_VERSION, observations_to_long
+from research_data_builder.engine.join import join_variables
+from research_data_builder.engine.result import ExecutionResult
+from research_data_builder.engine.transform import apply_transformations
+from research_data_builder.providers.domain import (
+    DataProvider,
+    Frequency,
+    ObservationQuery,
+)
+from research_data_builder.providers.registry import ProviderRegistry
+from research_data_builder.recipes.planner import BuildPlan, ResolvedBuildInput
+from research_data_builder.recipes.schemas import (
+    RecipeDefinition,
+    TransformationOperation,
+)
+
+
+class BuildExecutor:
+    """Retrieve normalized inputs and execute recipe-declared table operations."""
+
+    def __init__(self, providers: ProviderRegistry) -> None:
+        self.providers = providers
+
+    async def execute(self, version: RecipeVersion, plan: BuildPlan) -> ExecutionResult:
+        if str(version.id) != plan.recipe_version_id:
+            raise ValueError("build plan does not belong to recipe version")
+        if version.content_hash != plan.recipe_content_hash:
+            raise ValueError("build plan recipe hash does not match frozen version")
+
+        definition = RecipeDefinition.model_validate(version.content)
+        frames: dict[str, pl.DataFrame] = {}
+        for item in plan.inputs:
+            frames[item.output_name] = await self._execute_input(definition, item)
+
+        joined, reports = join_variables(
+            frames,
+            keys=definition.join.keys,
+            join_type=definition.join.type,
+        )
+        return ExecutionResult(
+            frame=joined,
+            join_reports=reports,
+            entity_mapping_version=ENTITY_MAPPING_VERSION,
+        )
+
+    async def _execute_input(
+        self,
+        definition: RecipeDefinition,
+        item: ResolvedBuildInput,
+    ) -> pl.DataFrame:
+        provider = DataProvider(item.provider)
+        connector = self.providers.get(provider)
+        request = item.request
+        query = ObservationQuery(
+            indicator_id=item.indicator_id,
+            entity_ids=tuple(str(value) for value in request.get("entity_ids", [])),
+            start_date=date.fromisoformat(str(request["start_date"])),
+            end_date=date.fromisoformat(str(request["end_date"])),
+        )
+        observations = await connector.get_observations(query)
+        frame = observations_to_long(observations, output_name=item.output_name)
+        frame = self._bound_frame(frame, definition, connector.capabilities.geographic_filtering)
+
+        source_frequency = Frequency(str(item.indicator_metadata["frequency"]))
+        method = self._aggregation_method(definition, item.output_name)
+        frame = convert_frequency(
+            frame,
+            source=source_frequency,
+            target=definition.output_frequency,
+            method=method,
+        )
+        return apply_transformations(
+            frame,
+            definition.transformations,
+            variable=item.output_name,
+        )
+
+    @staticmethod
+    def _bound_frame(
+        frame: pl.DataFrame,
+        definition: RecipeDefinition,
+        geographic: bool,
+    ) -> pl.DataFrame:
+        bounded = frame.filter(
+            pl.col("period").is_between(definition.start_date, definition.end_date, closed="both")
+        )
+        if geographic:
+            bounded = bounded.filter(pl.col("entity").is_in(list(definition.entities)))
+        return bounded
+
+    @staticmethod
+    def _aggregation_method(
+        definition: RecipeDefinition,
+        variable: str,
+    ) -> AggregationMethod | None:
+        for step in definition.transformations:
+            if step.variable == variable and step.operation is TransformationOperation.AGGREGATE:
+                return cast(AggregationMethod, step.parameters["method"])
+        return None
