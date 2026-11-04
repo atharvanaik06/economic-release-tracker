@@ -15,6 +15,8 @@ def test_recipe_and_build_routes_are_versioned_and_documented(app: FastAPI) -> N
     assert "/api/v1/recipe-versions/{version_id}/export" in paths
     assert "/api/v1/recipe-versions/{version_id}/builds" in paths
     assert "/api/v1/builds/{build_id}" in paths
+    assert "/api/v1/builds/{build_id}/execute" in paths
+    assert "/api/v1/builds/{build_id}/preview" in paths
 
     recipe_schema = schema["components"]["schemas"]["RecipeDefinition"]
     assert recipe_schema["additionalProperties"] is False

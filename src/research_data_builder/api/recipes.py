@@ -10,10 +10,12 @@ from research_data_builder.db.build_repositories import BuildRepository
 from research_data_builder.db.models import BuildRun, DatasetRecipe, RecipeVersion
 from research_data_builder.db.recipe_repositories import RecipeRepository, RecipeVersionRepository
 from research_data_builder.db.session import Database
+from research_data_builder.engine.executor import BuildExecutor
+from research_data_builder.engine.harmonize import HarmonizationError
 from research_data_builder.providers.errors import ProviderConfigurationError, ProviderError
 from research_data_builder.providers.registry import ProviderRegistry
 from research_data_builder.recipes.codec import RecipeCodec
-from research_data_builder.recipes.planner import BuildPlanner
+from research_data_builder.recipes.planner import BuildPlan, BuildPlanner
 from research_data_builder.recipes.schemas import RecipeDefinition
 from research_data_builder.recipes.service import RecipeNotFoundError, RecipeService
 
@@ -42,6 +44,16 @@ class BuildResource(BaseModel):
     status: str
     build_identity: str
     plan: dict[str, object]
+    row_count: int | None = None
+    execution_summary: dict[str, object] | None = None
+
+
+class BuildPreviewResource(BaseModel):
+    columns: list[str]
+    rows: list[dict[str, object]]
+    preview_row_count: int
+    total_row_count: int
+    truncated: bool
 
 
 def recipe_resource(recipe: DatasetRecipe) -> RecipeResource:
@@ -71,6 +83,8 @@ def build_resource(build: BuildRun) -> BuildResource:
         status=build.status.value,
         build_identity=build.build_identity,
         plan=build.plan,
+        row_count=build.row_count,
+        execution_summary=build.execution_summary,
     )
 
 
@@ -243,3 +257,71 @@ async def get_build(build_id: UUID, request: Request) -> BuildResource:
         if build is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="build not found")
         return build_resource(build)
+
+
+@router.post("/builds/{build_id}/execute", response_model=BuildResource)
+async def execute_build(
+    build_id: UUID,
+    request: Request,
+    preview_limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+) -> BuildResource:
+    database: Database = request.app.state.database
+    registry: ProviderRegistry = request.app.state.provider_registry
+    async with database.session() as session:
+        build = await BuildRepository(session).get(build_id)
+        if build is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="build not found")
+        version = await RecipeVersionRepository(session).get(build.recipe_version_id)
+        if version is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail="version is unavailable"
+            )
+
+    async with database.session() as session, session.begin():
+        active_build = await BuildRepository(session).get(build_id)
+        if active_build is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="build not found")
+        await BuildRepository(session).mark_retrieving(active_build)
+
+    try:
+        plan = BuildPlan.from_dict(build.plan)
+        result = await BuildExecutor(registry).execute(version, plan)
+    except (ProviderError, HarmonizationError, ValueError) as error:
+        async with database.session() as session, session.begin():
+            failed_build = await BuildRepository(session).get(build_id)
+            if failed_build is not None:
+                await BuildRepository(session).fail(
+                    failed_build,
+                    error_code="execution_failed",
+                    error_message=str(error),
+                )
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"code": "execution_failed", "message": str(error)},
+        ) from error
+
+    async with database.session() as session, session.begin():
+        completed_build = await BuildRepository(session).get(build_id)
+        if completed_build is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="build not found")
+        await BuildRepository(session).record_execution(
+            completed_build,
+            result,
+            preview_limit=preview_limit,
+        )
+        return build_resource(completed_build)
+
+
+@router.get("/builds/{build_id}/preview", response_model=BuildPreviewResource)
+async def get_build_preview(build_id: UUID, request: Request) -> BuildPreviewResource:
+    database: Database = request.app.state.database
+    async with database.session() as session:
+        build = await BuildRepository(session).get(build_id)
+        if build is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="build not found")
+        if build.preview is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="build preview is not ready",
+            )
+        return BuildPreviewResource.model_validate(build.preview)

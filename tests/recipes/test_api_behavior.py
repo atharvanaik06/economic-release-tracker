@@ -13,9 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from research_data_builder.api.recipes import (
     create_recipe,
+    execute_build,
     export_recipe_version,
     freeze_recipe,
     get_build,
+    get_build_preview,
     get_recipe,
     get_recipe_version,
     import_recipe,
@@ -35,6 +37,7 @@ from research_data_builder.providers import (
 )
 from research_data_builder.recipes.codec import canonical_recipe_hash
 from research_data_builder.recipes.schemas import RecipeDefinition
+from tests.engine.test_executor import ObservationConnector, version_and_plan
 from tests.recipes.test_schemas import valid_recipe
 
 
@@ -221,6 +224,42 @@ async def test_build_api_resolves_persists_reuses_and_reads_plans() -> None:
     )
     fetched = await get_build(build.id, api_request(FakeApiDatabase(session_with(build))))
     assert fetched.id == build.id
+
+
+@pytest.mark.anyio
+async def test_build_api_executes_and_exposes_bounded_preview() -> None:
+    version, plan = version_and_plan()
+    build = BuildRun(
+        id=uuid4(),
+        recipe_version_id=version.id,
+        status=BuildStatus.PLANNED,
+        build_identity=plan.build_identity,
+        plan=plan.as_dict(),
+    )
+    registry = ProviderRegistry([cast(ProviderConnector, ObservationConnector())])
+    database = FakeApiDatabase(
+        session_with(build, version),
+        session_with(build),
+        session_with(build),
+    )
+
+    executed = await execute_build(
+        build.id,
+        api_request(database, registry=registry),
+        preview_limit=1,
+    )
+
+    assert executed.status == "validating"
+    assert executed.row_count == 2
+    assert build.preview is not None
+    assert build.preview["truncated"] is True
+
+    preview = await get_build_preview(
+        build.id,
+        api_request(FakeApiDatabase(session_with(build))),
+    )
+    assert preview.preview_row_count == 1
+    assert preview.total_row_count == 2
 
 
 @pytest.mark.anyio

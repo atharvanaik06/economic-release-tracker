@@ -338,6 +338,7 @@ class BuildRun(Base):
     __table_args__ = (
         UniqueConstraint("build_identity", name="uq_build_runs_identity"),
         CheckConstraint("length(build_identity) = 64", name="build_identity_length"),
+        CheckConstraint("row_count IS NULL OR row_count >= 0", name="build_row_count_nonnegative"),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -356,6 +357,9 @@ class BuildRun(Base):
     )
     build_identity: Mapped[str] = mapped_column(String(64))
     plan: Mapped[dict[str, Any]] = mapped_column(JSON)
+    row_count: Mapped[int | None] = mapped_column(Integer)
+    preview: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    execution_summary: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

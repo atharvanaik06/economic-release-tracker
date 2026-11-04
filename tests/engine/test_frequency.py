@@ -6,7 +6,7 @@ from decimal import Decimal
 import polars as pl
 import pytest
 
-from research_data_builder.engine.frequency import convert_frequency
+from research_data_builder.engine.frequency import AggregationMethod, convert_frequency
 from research_data_builder.engine.harmonize import HarmonizationError
 from research_data_builder.providers import Frequency
 
@@ -61,4 +61,60 @@ def test_frequency_conversion_rejects_upsampling_and_redundant_aggregation() -> 
             source=Frequency.MONTHLY,
             target=Frequency.MONTHLY,
             method="mean",
+        )
+
+
+@pytest.mark.parametrize(
+    ("method", "expected"),
+    [
+        ("sum", Decimal("4.0000000000")),
+        ("min", Decimal("1.0000000000")),
+        ("max", Decimal("3.0000000000")),
+        ("last", Decimal("3.0000000000")),
+    ],
+)
+def test_supported_aggregation_methods_are_deterministic(
+    method: AggregationMethod,
+    expected: Decimal,
+) -> None:
+    annual = convert_frequency(
+        monthly_frame().filter(pl.col("entity") == "CZE"),
+        source=Frequency.MONTHLY,
+        target=Frequency.ANNUAL,
+        method=method,
+    )
+    assert annual["value"].to_list() == [expected]
+
+
+def test_frequency_buckets_and_no_op_are_explicit() -> None:
+    original = monthly_frame()
+    assert convert_frequency(
+        original,
+        source=Frequency.MONTHLY,
+        target=Frequency.MONTHLY,
+        method=None,
+    ).equals(original)
+
+    quarterly = convert_frequency(
+        original,
+        source=Frequency.MONTHLY,
+        target=Frequency.QUARTERLY,
+        method="last",
+    )
+    assert quarterly["period"].to_list() == [date(2024, 1, 1), date(2024, 1, 1)]
+
+    with pytest.raises(HarmonizationError, match="weekly and daily"):
+        convert_frequency(
+            pl.DataFrame(
+                {
+                    "entity": ["CZE"],
+                    "period": [date(2024, 1, 1)],
+                    "variable": ["x"],
+                    "value": [Decimal("1")],
+                },
+                schema_overrides={"value": pl.Decimal(30, 10)},
+            ),
+            source=Frequency.DAILY,
+            target=Frequency.WEEKLY,
+            method="last",
         )

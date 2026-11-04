@@ -1,12 +1,14 @@
 """Persistence for deterministic build plans and resolved provider inputs."""
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from research_data_builder.db.models import BuildInput, BuildRun, BuildStatus
+from research_data_builder.engine.result import ExecutionResult
 from research_data_builder.recipes.planner import BuildPlan
 
 
@@ -59,3 +61,38 @@ class BuildRepository:
         return await self.session.scalar(
             select(BuildRun).where(BuildRun.build_identity == build_identity)
         )
+
+    async def mark_retrieving(self, build: BuildRun) -> BuildRun:
+        build.status = BuildStatus.RETRIEVING
+        build.started_at = build.started_at or datetime.now(UTC)
+        build.finished_at = None
+        build.error_code = None
+        build.error_message = None
+        await self.session.flush()
+        return build
+
+    async def record_execution(
+        self,
+        build: BuildRun,
+        result: ExecutionResult,
+        *,
+        preview_limit: int,
+    ) -> BuildRun:
+        preview = result.preview(limit=preview_limit)
+        build.status = BuildStatus.VALIDATING
+        build.row_count = result.frame.height
+        build.preview = preview.as_dict()
+        build.execution_summary = {
+            "entity_mapping_version": result.entity_mapping_version,
+            "join_reports": [asdict(report) for report in result.join_reports],
+        }
+        await self.session.flush()
+        return build
+
+    async def fail(self, build: BuildRun, *, error_code: str, error_message: str) -> BuildRun:
+        build.status = BuildStatus.FAILED
+        build.finished_at = datetime.now(UTC)
+        build.error_code = error_code
+        build.error_message = error_message[:512]
+        await self.session.flush()
+        return build

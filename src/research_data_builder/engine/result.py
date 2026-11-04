@@ -1,6 +1,8 @@
 """Provider-independent transformation and preview results."""
 
 from dataclasses import dataclass
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 
 import polars as pl
@@ -25,6 +27,15 @@ class DatasetPreview:
     total_row_count: int
     truncated: bool
 
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "columns": list(self.columns),
+            "rows": [{key: _json_value(value) for key, value in row.items()} for row in self.rows],
+            "preview_row_count": self.preview_row_count,
+            "total_row_count": self.total_row_count,
+            "truncated": self.truncated,
+        }
+
 
 @dataclass(frozen=True, slots=True)
 class ExecutionResult:
@@ -45,3 +56,11 @@ class ExecutionResult:
             total_row_count=self.frame.height,
             truncated=self.frame.height > limit,
         )
+
+
+def _json_value(value: Any) -> Any:
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, date | datetime):
+        return value.isoformat()
+    return value
