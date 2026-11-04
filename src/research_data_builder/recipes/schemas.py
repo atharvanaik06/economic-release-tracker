@@ -32,6 +32,7 @@ class OutputFormat(StrEnum):
 
 
 class TransformationOperation(StrEnum):
+    AGGREGATE = "aggregate"
     LAG = "lag"
     DIFFERENCE = "difference"
     PERCENT_CHANGE = "percent_change"
@@ -67,6 +68,10 @@ class TransformationDefinition(StrictModel):
             factor = self.parameters.get("factor")
             if not isinstance(factor, int | float) or isinstance(factor, bool) or factor == 0:
                 raise ValueError("scale requires a non-zero numeric factor")
+        if self.operation is TransformationOperation.AGGREGATE:
+            method = self.parameters.get("method")
+            if method not in {"mean", "sum", "min", "max", "last"}:
+                raise ValueError("aggregate requires method: mean, sum, min, max, or last")
         return self
 
 
@@ -117,6 +122,13 @@ class RecipeDefinition(StrictModel):
             raise ValueError("World Bank variables require at least one entity")
         if any(step.variable not in output_names for step in self.transformations):
             raise ValueError("transformations must reference a selected variable output_name")
+        aggregation_variables = [
+            step.variable
+            for step in self.transformations
+            if step.operation is TransformationOperation.AGGREGATE
+        ]
+        if len(aggregation_variables) != len(set(aggregation_variables)):
+            raise ValueError("a variable can declare at most one aggregate transformation")
         if not self.formats or len(set(self.formats)) != len(self.formats):
             raise ValueError("formats must be non-empty and unique")
         if self.join.keys == ("entity", "period") and not self.entities:
