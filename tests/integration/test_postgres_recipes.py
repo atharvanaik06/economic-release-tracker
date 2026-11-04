@@ -2,6 +2,8 @@
 
 import asyncio
 import os
+from datetime import date
+from decimal import Decimal
 from typing import cast
 
 import pytest
@@ -18,10 +20,13 @@ from research_data_builder.db.models import (
 )
 from research_data_builder.db.recipe_repositories import RecipeRepository, RecipeVersionRepository
 from research_data_builder.db.session import Database
+from research_data_builder.engine.executor import BuildExecutor
 from research_data_builder.providers import (
     DataProvider,
     Frequency,
     Indicator,
+    Observation,
+    ObservationQuery,
     ProviderCapabilities,
     ProviderConnector,
     ProviderRegistry,
@@ -53,6 +58,20 @@ class FixtureConnector:
             source_url=f"https://example.test/{indicator_id}",
         )
 
+    async def get_observations(self, query: ObservationQuery) -> list[Observation]:
+        return [
+            Observation(
+                provider=self.provider,
+                indicator_id=query.indicator_id,
+                entity_id=entity,
+                period=date(2024, 12, 31),
+                value=Decimal("1.25"),
+                is_missing=False,
+                frequency=Frequency.ANNUAL,
+            )
+            for entity in query.entity_ids
+        ]
+
 
 async def clear_recipes(database: Database) -> None:
     async with database.session() as session, session.begin():
@@ -73,7 +92,8 @@ def test_postgres_freezes_versions_and_reuses_deterministic_builds() -> None:
         database = Database(TEST_DATABASE_URL)
         await clear_recipes(database)
         definition = RecipeDefinition.model_validate(valid_recipe())
-        planner = BuildPlanner(ProviderRegistry([cast(ProviderConnector, FixtureConnector())]))
+        registry = ProviderRegistry([cast(ProviderConnector, FixtureConnector())])
+        planner = BuildPlanner(registry)
 
         try:
             async with database.session() as session, session.begin():
@@ -100,6 +120,24 @@ def test_postgres_freezes_versions_and_reuses_deterministic_builds() -> None:
                 assert first.created is True
                 assert second.created is False
                 assert second.build.id == first.build.id
+                build_id = first.build.id
+
+            execution = await BuildExecutor(registry).execute(version, plan)
+            async with database.session() as session, session.begin():
+                stored_build = await BuildRepository(session).get(build_id)
+                assert stored_build is not None
+                await BuildRepository(session).record_execution(
+                    stored_build,
+                    execution,
+                    preview_limit=2,
+                )
+
+            async with database.session() as session:
+                stored_build = await BuildRepository(session).get(build_id)
+                assert stored_build is not None
+                assert stored_build.row_count == 2
+                assert stored_build.preview is not None
+                assert stored_build.preview["preview_row_count"] == 2
 
             changed = definition.model_copy(update={"name": "Changed draft"})
             async with database.session() as session, session.begin():
