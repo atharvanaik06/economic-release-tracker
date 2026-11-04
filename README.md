@@ -51,7 +51,7 @@ Authentication, a browser interface, background queues, cloud storage, additiona
 
 ## Current foundation
 
-Phases 1 through 4 are complete:
+Phases 1 through 5 are complete:
 
 - FastAPI application, validated settings, and structured logging;
 - Docker and PostgreSQL local stack;
@@ -70,6 +70,12 @@ Phases 1 through 4 are complete:
 - provider metadata resolution and deterministic build-plan identities;
 - idempotent planned builds with exact provider requests and metadata fingerprints;
 - versioned recipe and build-planning API routes;
+- Polars-based long-form staging and deterministic wide-table execution;
+- versioned entity aliases and canonical period representations;
+- explicit aggregation, lag, difference, percent-change, and scaling operations;
+- rejection of ambiguous or unsupported frequency conversions;
+- outer, inner, and left joins with unmatched-key reporting;
+- durable execution summaries and bounded dataset previews;
 - PostgreSQL integration tests for decimal precision, constraints, ordering, and rollback.
 
 These existing tables form the provider-data and provenance foundation. Dataset recipes, builds, validation results, and export metadata are added in later phases.
@@ -115,8 +121,9 @@ docker compose up --build
 - [Database design and migrations](docs/DATABASE.md)
 - [Provider connectors](docs/PROVIDERS.md)
 - [Recipe and build planning](docs/RECIPES.md)
+- [Transformation engine](docs/ENGINE.md)
 - [Development guide](docs/DEVELOPMENT.md)
 
 ## Current status
 
-Versioned recipe and deterministic build planning are complete. The next phase implements the harmonization and transformation engine that turns a plan into a research table.
+Dataset execution and bounded previews are complete. The next phase adds validation, full provenance, deterministic CSV/Parquet exports, codebooks, manifests, and citations.

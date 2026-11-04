@@ -82,6 +82,11 @@ The Phase 4 `build_inputs` records are resolved requests and indicator metadata 
 retrieved observation-version lineage is added when Phase 5 executes plans and Phase 6 records full
 provenance.
 
+Migration `0003` adds the Phase 5 execution boundary to `build_runs`: full result row count, a
+bounded JSON preview, and an execution summary containing entity-mapping version and unmatched join
+counts. A transformed build advances to `validating`, not `succeeded`; Phase 6 must complete
+validation and required exports first.
+
 ## Later product records
 
 ### Validation and lineage

@@ -147,6 +147,7 @@ Routes are versioned under `/api/v1`. Timestamps use ISO 8601 UTC. Decimal value
 | `POST /api/v1/recipe-versions/{version_id}/builds` | Start or reuse a deterministic build. |
 | `GET /api/v1/builds/{build_id}` | Return state, timing, and summary. |
 | `GET /api/v1/builds/{build_id}/preview` | Return a bounded data preview. |
+| `POST /api/v1/builds/{build_id}/execute` | Retrieve inputs and execute the deterministic table plan. |
 | `GET /api/v1/builds/{build_id}/validation` | Return warnings, errors, and coverage. |
 | `GET /api/v1/builds/{build_id}/lineage` | Explain input and transformation lineage. |
 | `GET /api/v1/builds/{build_id}/exports` | List generated artifacts and checksums. |

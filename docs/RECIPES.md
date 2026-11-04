@@ -1,7 +1,7 @@
 # Recipe Versions and Build Planning
 
-Phase 4 turns a research definition into a validated, immutable, deterministic plan. It deliberately
-stops before downloading and joining observation values; executing the plan belongs to Phase 5.
+Phase 4 turns a research definition into a validated, immutable, deterministic plan. Phase 5 now
+executes that plan into a bounded research-table preview.
 
 ## Recipe shape
 
@@ -34,8 +34,9 @@ formats: [csv, parquet]
 Unknown fields are errors. Output names must use lower-case snake case. Dates, entities, output
 names, formats, join keys, and transformation references are validated together.
 
-The reviewed transformation vocabulary currently describes `lag`, `difference`, `percent_change`,
-and `scale`. Phase 4 stores these operations; Phase 5 implements their dataframe behavior.
+The reviewed transformation vocabulary describes `aggregate`, `lag`, `difference`,
+`percent_change`, and `scale`. Date/entity selection performs explicit filtering and each variable's
+`output_name` performs the provider-to-output rename.
 
 ## Draft and version behavior
 
@@ -95,6 +96,8 @@ added while executing the plan in the next phases.
 | `GET /api/v1/recipe-versions/{id}/export` | Export JSON or YAML. |
 | `POST /api/v1/recipe-versions/{id}/builds` | Resolve or reuse a deterministic plan. |
 | `GET /api/v1/builds/{id}` | Inspect build status, identity, and resolved inputs. |
+| `POST /api/v1/builds/{id}/execute` | Retrieve, harmonize, transform, and join inputs. |
+| `GET /api/v1/builds/{id}/preview` | Read the stored bounded table preview. |
 
 FRED build planning requires a configured API key. World Bank planning is keyless. A provider
 configuration failure is reported separately from a missing or invalid provider indicator.

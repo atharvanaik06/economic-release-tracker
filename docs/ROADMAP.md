@@ -146,9 +146,11 @@ Demo: create the European macro-panel recipe, validate it, freeze a version, and
 
 ## Phase 5: Build the harmonization and transformation engine
 
+**Status:** complete.
+
 **Goal:** turn normalized provider inputs into one correct research table.
 
-Deliverables:
+Delivered:
 
 - Polars or DuckDB execution engine.
 - Canonical entity and period representations.
@@ -159,6 +161,18 @@ Deliverables:
 - Outer/inner join rules with unmatched-key reporting.
 - Stable column types and ordering.
 - Bounded data preview.
+
+Implementation notes:
+
+- Polars values use `Decimal(30, 10)` through staging and transformation.
+- Entity aliases are explicit and carry mapping version `2026-11-04.v1`.
+- Provider periods become canonical period-start dates.
+- Recipe entity/date selection performs deterministic filtering and output names perform renaming.
+- Coarser frequency conversion requires an explicit aggregate method; upsampling is rejected.
+- Lag, difference, percent change, and scale execute in declared order with documented nulls.
+- Joins report left-only and right-only key counts before applying outer, inner, or left behavior.
+- Execution advances a build to `validating`; Phase 6 owns validation and final success.
+- Stored previews are capped at 1,000 rows and retain the full result row count.
 
 Likely commits:
 
