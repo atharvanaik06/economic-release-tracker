@@ -1,6 +1,7 @@
 """Validated environment-based application settings."""
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, SecretStr, field_validator
@@ -32,6 +33,7 @@ class Settings(BaseSettings):
     fred_api_key: SecretStr | None = None
     provider_http_timeout_seconds: float = Field(default=15.0, gt=0, le=120)
     provider_http_max_attempts: int = Field(default=3, ge=1, le=10)
+    artifact_root: Path = Path("artifacts")
 
     @field_validator("log_level")
     @classmethod
