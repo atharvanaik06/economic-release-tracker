@@ -26,6 +26,28 @@ class MissingValuePolicy(StrEnum):
     DROP_ROWS = "drop_rows"
 
 
+class ValidationSeverity(StrEnum):
+    WARNING = "warning"
+    ERROR = "error"
+
+
+class RangeValidationDefinition(StrictModel):
+    """Recipe-defined inclusive numeric range for one output variable."""
+
+    variable: str = Field(pattern=r"^[a-z][a-z0-9_]{0,127}$")
+    minimum: float | None = None
+    maximum: float | None = None
+    severity: ValidationSeverity = ValidationSeverity.WARNING
+
+    @model_validator(mode="after")
+    def validate_bounds(self) -> "RangeValidationDefinition":
+        if self.minimum is None and self.maximum is None:
+            raise ValueError("range validation requires minimum or maximum")
+        if self.minimum is not None and self.maximum is not None and self.minimum > self.maximum:
+            raise ValueError("range validation minimum cannot exceed maximum")
+        return self
+
+
 class OutputFormat(StrEnum):
     CSV = "csv"
     PARQUET = "parquet"
@@ -102,6 +124,7 @@ class RecipeDefinition(StrictModel):
     join: JoinDefinition = Field(default_factory=JoinDefinition)
     missing_values: MissingValuePolicy = MissingValuePolicy.PRESERVE
     formats: tuple[OutputFormat, ...] = (OutputFormat.CSV, OutputFormat.PARQUET)
+    validations: tuple[RangeValidationDefinition, ...] = Field(default=(), max_length=100)
 
     @model_validator(mode="after")
     def validate_recipe_semantics(self) -> "RecipeDefinition":
@@ -122,6 +145,8 @@ class RecipeDefinition(StrictModel):
             raise ValueError("World Bank variables require at least one entity")
         if any(step.variable not in output_names for step in self.transformations):
             raise ValueError("transformations must reference a selected variable output_name")
+        if any(rule.variable not in output_names for rule in self.validations):
+            raise ValueError("validations must reference a selected variable output_name")
         aggregation_variables = [
             step.variable
             for step in self.transformations
