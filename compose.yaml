@@ -8,8 +8,11 @@ services:
       RESEARCH_DATA_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-research_data}:${POSTGRES_PASSWORD:-research_data}@postgres:5432/${POSTGRES_DB:-research_data}
       RESEARCH_DATA_ENVIRONMENT: development
       RESEARCH_DATA_LOG_LEVEL: INFO
+      RESEARCH_DATA_ARTIFACT_ROOT: /app/artifacts
     ports:
       - "8000:8000"
+    volumes:
+      - ./artifacts:/app/artifacts
     depends_on:
       postgres:
         condition: service_healthy

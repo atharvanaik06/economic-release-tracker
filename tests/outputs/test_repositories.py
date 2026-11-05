@@ -28,6 +28,17 @@ def passing_report() -> ValidationReport:
     )
 
 
+def failing_report() -> ValidationReport:
+    return ValidationReport(
+        passed=False,
+        row_count=1,
+        expected_row_count=1,
+        coverage_percent=100.0,
+        issues=(ValidationIssue("range_violation", "error", "outside range", "value"),),
+        missing_by_variable={"value": 0},
+    )
+
+
 @pytest.mark.anyio
 async def test_output_repository_requires_complete_bundle_before_success() -> None:
     session = MagicMock(spec=AsyncSession)
@@ -57,3 +68,22 @@ async def test_output_repository_requires_complete_bundle_before_success() -> No
     incomplete = BundleResult(Path("/tmp"), "c" * 64, (), {}, {})
     with pytest.raises(ValueError, match="missing"):
         await repository.record_success(build, incomplete, passing_report())
+
+
+@pytest.mark.anyio
+async def test_output_repository_persists_blocking_validation_failure() -> None:
+    session = MagicMock(spec=AsyncSession)
+    session.execute = AsyncMock()
+    session.flush = AsyncMock()
+    repository = BuildOutputRepository(session)
+    build = MagicMock()
+    build.id = uuid4()
+
+    await repository.record_validation_failure(build, failing_report())
+
+    assert build.status is BuildStatus.FAILED
+    assert build.error_code == "validation_failed"
+    assert session.execute.await_count == 1
+
+    with pytest.raises(ValueError, match="blocking error"):
+        await repository.record_validation_failure(build, passing_report())

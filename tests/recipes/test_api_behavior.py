@@ -1,7 +1,9 @@
 """Behavioral tests for recipe and deterministic build API operations."""
 
+import hashlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
@@ -12,12 +14,17 @@ from fastapi import HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from research_data_builder.api.recipes import (
+    compare_build_resources,
     create_recipe,
+    download_export,
     execute_build,
     export_recipe_version,
     freeze_recipe,
     get_build,
+    get_build_exports,
+    get_build_lineage,
     get_build_preview,
+    get_build_validation,
     get_recipe,
     get_recipe_version,
     import_recipe,
@@ -26,7 +33,16 @@ from research_data_builder.api.recipes import (
     plan_build,
     update_recipe,
 )
-from research_data_builder.db.models import BuildRun, BuildStatus, DatasetRecipe, RecipeVersion
+from research_data_builder.core.config import Settings
+from research_data_builder.db.models import (
+    BuildLineage,
+    BuildRun,
+    BuildStatus,
+    DatasetRecipe,
+    DatasetValidationResult,
+    ExportArtifact,
+    RecipeVersion,
+)
 from research_data_builder.providers import (
     DataProvider,
     Frequency,
@@ -54,6 +70,7 @@ def session_with(*scalar_values: object) -> MagicMock:
     session.flush = AsyncMock()
     session.scalar = AsyncMock(side_effect=list(scalar_values))
     session.scalars = AsyncMock()
+    session.execute = AsyncMock()
     session.begin.return_value = TransactionContext()
 
     def assign_id(model: Any) -> None:
@@ -89,10 +106,16 @@ class ApiConnector:
         )
 
 
-def api_request(database: FakeApiDatabase, *, registry: ProviderRegistry | None = None) -> Request:
+def api_request(
+    database: FakeApiDatabase,
+    *,
+    registry: ProviderRegistry | None = None,
+    settings: Settings | None = None,
+) -> Request:
     state = SimpleNamespace(
         database=database,
         provider_registry=registry or ProviderRegistry([]),
+        settings=settings or Settings(_env_file=None),  # type: ignore[call-arg]
     )
     return cast(Request, SimpleNamespace(app=SimpleNamespace(state=state)))
 
@@ -227,7 +250,7 @@ async def test_build_api_resolves_persists_reuses_and_reads_plans() -> None:
 
 
 @pytest.mark.anyio
-async def test_build_api_executes_and_exposes_bounded_preview() -> None:
+async def test_build_api_executes_and_exposes_bounded_preview(tmp_path: Path) -> None:
     version, plan = version_and_plan()
     build = BuildRun(
         id=uuid4(),
@@ -245,11 +268,16 @@ async def test_build_api_executes_and_exposes_bounded_preview() -> None:
 
     executed = await execute_build(
         build.id,
-        api_request(database, registry=registry),
+        api_request(
+            database,
+            registry=registry,
+            settings=Settings(artifact_root=tmp_path, _env_file=None),  # type: ignore[call-arg]
+        ),
         preview_limit=1,
     )
 
-    assert executed.status == "validating"
+    assert executed.status == "succeeded"
+    assert executed.dataset_checksum is not None
     assert executed.row_count == 2
     assert build.preview is not None
     assert build.preview["truncated"] is True
@@ -276,3 +304,83 @@ async def test_recipe_api_returns_not_found_errors() -> None:
     with pytest.raises(HTTPException) as missing_build:
         await get_build(missing_id, api_request(FakeApiDatabase(session_with(None))))
     assert missing_build.value.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_output_apis_return_validation_lineage_exports_and_comparison(
+    tmp_path: Path,
+) -> None:
+    left = BuildRun(
+        id=uuid4(),
+        recipe_version_id=uuid4(),
+        status=BuildStatus.SUCCEEDED,
+        build_identity="a" * 64,
+        plan={"recipe_content_hash": "b" * 64, "inputs": []},
+        dataset_checksum="c" * 64,
+    )
+    right = BuildRun(
+        id=uuid4(),
+        recipe_version_id=uuid4(),
+        status=BuildStatus.SUCCEEDED,
+        build_identity="d" * 64,
+        plan={"recipe_content_hash": "b" * 64, "inputs": []},
+        dataset_checksum="c" * 64,
+    )
+    validation = DatasetValidationResult(
+        id=uuid4(),
+        build_run_id=left.id,
+        code="validation_passed",
+        severity="info",
+        message="passed",
+    )
+    lineage = BuildLineage(id=uuid4(), build_run_id=left.id, content={"columns": []})
+    content = b"entity,period\nCZE,2024-01-01\n"
+    relative_path = f"builds/{left.id}/data.csv"
+    file_path = tmp_path / relative_path
+    file_path.parent.mkdir(parents=True)
+    file_path.write_bytes(content)
+    export = ExportArtifact(
+        id=uuid4(),
+        build_run_id=left.id,
+        name="data.csv",
+        kind="csv",
+        relative_path=relative_path,
+        size_bytes=len(content),
+        sha256=hashlib.sha256(content).hexdigest(),
+    )
+
+    validation_session = session_with(left)
+    validation_rows = MagicMock()
+    validation_rows.__iter__.return_value = iter([validation])
+    validation_session.scalars.return_value = validation_rows
+    issues = await get_build_validation(left.id, api_request(FakeApiDatabase(validation_session)))
+    assert issues[0].code == "validation_passed"
+
+    lineage_response = await get_build_lineage(
+        left.id,
+        api_request(FakeApiDatabase(session_with(left, lineage))),
+    )
+    assert lineage_response == {"columns": []}
+
+    export_session = session_with(left)
+    export_rows = MagicMock()
+    export_rows.__iter__.return_value = iter([export])
+    export_session.scalars.return_value = export_rows
+    exports = await get_build_exports(left.id, api_request(FakeApiDatabase(export_session)))
+    assert exports[0].sha256 == export.sha256
+
+    response = await download_export(
+        export.id,
+        api_request(
+            FakeApiDatabase(session_with(export)),
+            settings=Settings(artifact_root=tmp_path, _env_file=None),  # type: ignore[call-arg]
+        ),
+    )
+    assert response.filename == "data.csv"
+
+    comparison = await compare_build_resources(
+        left.id,
+        right.id,
+        api_request(FakeApiDatabase(session_with(left, right))),
+    )
+    assert comparison["same_dataset"] is True

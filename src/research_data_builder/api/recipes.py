@@ -1,23 +1,30 @@
 """Versioned recipe and deterministic build-plan HTTP API."""
 
-from typing import Annotated, Literal
+import hashlib
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Body, HTTPException, Query, Request, Response, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from research_data_builder.artifacts import export_research_bundle
+from research_data_builder.core.config import Settings
 from research_data_builder.db.build_repositories import BuildRepository
 from research_data_builder.db.models import BuildRun, DatasetRecipe, RecipeVersion
+from research_data_builder.db.output_repositories import BuildOutputRepository
 from research_data_builder.db.recipe_repositories import RecipeRepository, RecipeVersionRepository
 from research_data_builder.db.session import Database
 from research_data_builder.engine.executor import BuildExecutor
 from research_data_builder.engine.harmonize import HarmonizationError
+from research_data_builder.provenance import compare_builds
 from research_data_builder.providers.errors import ProviderConfigurationError, ProviderError
 from research_data_builder.providers.registry import ProviderRegistry
 from research_data_builder.recipes.codec import RecipeCodec
 from research_data_builder.recipes.planner import BuildPlan, BuildPlanner
 from research_data_builder.recipes.schemas import RecipeDefinition
 from research_data_builder.recipes.service import RecipeNotFoundError, RecipeService
+from research_data_builder.validation import validate_dataset
 
 router = APIRouter(prefix="/api/v1", tags=["recipes"])
 
@@ -46,6 +53,8 @@ class BuildResource(BaseModel):
     plan: dict[str, object]
     row_count: int | None = None
     execution_summary: dict[str, object] | None = None
+    dataset_checksum: str | None = None
+    bundle_path: str | None = None
 
 
 class BuildPreviewResource(BaseModel):
@@ -54,6 +63,23 @@ class BuildPreviewResource(BaseModel):
     preview_row_count: int
     total_row_count: int
     truncated: bool
+
+
+class ValidationIssueResource(BaseModel):
+    code: str
+    severity: str
+    variable: str | None
+    message: str
+    details: dict[str, Any] | None
+
+
+class ExportResource(BaseModel):
+    id: UUID
+    name: str
+    kind: str
+    relative_path: str
+    size_bytes: int
+    sha256: str
 
 
 def recipe_resource(recipe: DatasetRecipe) -> RecipeResource:
@@ -85,6 +111,8 @@ def build_resource(build: BuildRun) -> BuildResource:
         plan=build.plan,
         row_count=build.row_count,
         execution_summary=build.execution_summary,
+        dataset_checksum=build.dataset_checksum,
+        bundle_path=build.bundle_path,
     )
 
 
@@ -300,6 +328,53 @@ async def execute_build(
             detail={"code": "execution_failed", "message": str(error)},
         ) from error
 
+    recipe = RecipeDefinition.model_validate(version.content)
+    validation = validate_dataset(result, recipe)
+    if not validation.passed:
+        async with database.session() as session, session.begin():
+            invalid_build = await BuildRepository(session).get(build_id)
+            if invalid_build is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="build not found")
+            await BuildRepository(session).record_execution(
+                invalid_build,
+                result,
+                preview_limit=preview_limit,
+            )
+            await BuildOutputRepository(session).record_validation_failure(
+                invalid_build, validation
+            )
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"code": "validation_failed", "validation": validation.as_dict()},
+        )
+
+    settings: Settings = request.app.state.settings
+    try:
+        bundle = export_research_bundle(
+            artifact_root=settings.artifact_root,
+            build_id=build_id,
+            build_identity=build.build_identity,
+            frame=result.frame,
+            recipe=recipe,
+            plan=plan,
+            validation=validation,
+            entity_mapping_version=result.entity_mapping_version,
+            application_version=settings.app_version,
+        )
+    except (OSError, ValueError) as error:
+        async with database.session() as session, session.begin():
+            failed_build = await BuildRepository(session).get(build_id)
+            if failed_build is not None:
+                await BuildRepository(session).fail(
+                    failed_build,
+                    error_code="export_failed",
+                    error_message=str(error),
+                )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "export_failed"},
+        ) from error
+
     async with database.session() as session, session.begin():
         completed_build = await BuildRepository(session).get(build_id)
         if completed_build is None:
@@ -308,6 +383,11 @@ async def execute_build(
             completed_build,
             result,
             preview_limit=preview_limit,
+        )
+        await BuildOutputRepository(session).record_success(
+            completed_build,
+            bundle,
+            validation,
         )
         return build_resource(completed_build)
 
@@ -325,3 +405,87 @@ async def get_build_preview(build_id: UUID, request: Request) -> BuildPreviewRes
                 detail="build preview is not ready",
             )
         return BuildPreviewResource.model_validate(build.preview)
+
+
+@router.get(
+    "/builds/{build_id}/validation",
+    response_model=list[ValidationIssueResource],
+)
+async def get_build_validation(
+    build_id: UUID,
+    request: Request,
+) -> list[ValidationIssueResource]:
+    database: Database = request.app.state.database
+    async with database.session() as session:
+        build = await BuildRepository(session).get(build_id)
+        if build is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="build not found")
+        rows = await BuildOutputRepository(session).list_validation(build_id)
+        return [
+            ValidationIssueResource(
+                code=row.code,
+                severity=row.severity,
+                variable=row.variable,
+                message=row.message,
+                details=row.details,
+            )
+            for row in rows
+        ]
+
+
+@router.get("/builds/{build_id}/lineage")
+async def get_build_lineage(build_id: UUID, request: Request) -> dict[str, Any]:
+    database: Database = request.app.state.database
+    async with database.session() as session:
+        build = await BuildRepository(session).get(build_id)
+        if build is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="build not found")
+        lineage = await BuildOutputRepository(session).get_lineage(build_id)
+        if lineage is None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="lineage is not ready")
+        return lineage.content
+
+
+@router.get("/builds/{build_id}/exports", response_model=list[ExportResource])
+async def get_build_exports(build_id: UUID, request: Request) -> list[ExportResource]:
+    database: Database = request.app.state.database
+    async with database.session() as session:
+        build = await BuildRepository(session).get(build_id)
+        if build is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="build not found")
+        exports = await BuildOutputRepository(session).list_exports(build_id)
+        return [ExportResource.model_validate(export, from_attributes=True) for export in exports]
+
+
+@router.get("/exports/{export_id}/download", response_class=FileResponse)
+async def download_export(export_id: UUID, request: Request) -> FileResponse:
+    database: Database = request.app.state.database
+    settings: Settings = request.app.state.settings
+    async with database.session() as session:
+        export = await BuildOutputRepository(session).get_export(export_id)
+        if export is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="export not found")
+    root = settings.artifact_root.expanduser().resolve()
+    path = (root / export.relative_path).resolve()
+    if not path.is_relative_to(root) or not path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="artifact file not found")
+    if hashlib.sha256(path.read_bytes()).hexdigest() != export.sha256:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="artifact checksum mismatch"
+        )
+    return FileResponse(path, filename=export.name)
+
+
+@router.get("/builds/{build_id}/comparison/{other_build_id}")
+async def compare_build_resources(
+    build_id: UUID,
+    other_build_id: UUID,
+    request: Request,
+) -> dict[str, Any]:
+    database: Database = request.app.state.database
+    async with database.session() as session:
+        left = await BuildRepository(session).get(build_id)
+        right = await BuildRepository(session).get(other_build_id)
+        if left is None or right is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="build not found")
+        return compare_builds(left, right)

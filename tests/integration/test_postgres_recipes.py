@@ -2,22 +2,29 @@
 
 import asyncio
 import os
+import tempfile
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 from typing import cast
 
 import pytest
 from sqlalchemy import delete
 
+from research_data_builder.artifacts import export_research_bundle
 from research_data_builder.db.build_repositories import BuildRepository
 from research_data_builder.db.models import (
     BuildInput,
+    BuildLineage,
     BuildRun,
     DatasetRecipe,
+    DatasetValidationResult,
+    ExportArtifact,
     RecipeVariable,
     RecipeVersion,
     TransformationStep,
 )
+from research_data_builder.db.output_repositories import BuildOutputRepository
 from research_data_builder.db.recipe_repositories import RecipeRepository, RecipeVersionRepository
 from research_data_builder.db.session import Database
 from research_data_builder.engine.executor import BuildExecutor
@@ -33,6 +40,7 @@ from research_data_builder.providers import (
 )
 from research_data_builder.recipes.planner import BuildPlanner
 from research_data_builder.recipes.schemas import RecipeDefinition
+from research_data_builder.validation import validate_dataset
 from tests.recipes.test_schemas import valid_recipe
 
 TEST_DATABASE_URL = os.getenv("RESEARCH_DATA_TEST_DATABASE_URL")
@@ -76,6 +84,9 @@ class FixtureConnector:
 async def clear_recipes(database: Database) -> None:
     async with database.session() as session, session.begin():
         for model in (
+            ExportArtifact,
+            BuildLineage,
+            DatasetValidationResult,
             BuildInput,
             BuildRun,
             TransformationStep,
@@ -123,21 +134,47 @@ def test_postgres_freezes_versions_and_reuses_deterministic_builds() -> None:
                 build_id = first.build.id
 
             execution = await BuildExecutor(registry).execute(version, plan)
-            async with database.session() as session, session.begin():
-                stored_build = await BuildRepository(session).get(build_id)
-                assert stored_build is not None
-                await BuildRepository(session).record_execution(
-                    stored_build,
-                    execution,
-                    preview_limit=2,
+            validation = validate_dataset(execution, definition)
+            with tempfile.TemporaryDirectory() as temporary_directory:
+                bundle = export_research_bundle(
+                    artifact_root=Path(temporary_directory),
+                    build_id=build_id,
+                    build_identity=plan.build_identity,
+                    frame=execution.frame,
+                    recipe=definition,
+                    plan=plan,
+                    validation=validation,
+                    entity_mapping_version=execution.entity_mapping_version,
+                    application_version="0.1.0",
                 )
+                async with database.session() as session, session.begin():
+                    stored_build = await BuildRepository(session).get(build_id)
+                    assert stored_build is not None
+                    await BuildRepository(session).record_execution(
+                        stored_build,
+                        execution,
+                        preview_limit=2,
+                    )
+                    await BuildOutputRepository(session).record_success(
+                        stored_build,
+                        bundle,
+                        validation,
+                    )
 
             async with database.session() as session:
                 stored_build = await BuildRepository(session).get(build_id)
                 assert stored_build is not None
                 assert stored_build.row_count == 2
+                assert stored_build.status.value == "succeeded"
+                assert stored_build.dataset_checksum is not None
                 assert stored_build.preview is not None
                 assert stored_build.preview["preview_row_count"] == 2
+                exports = await BuildOutputRepository(session).list_exports(build_id)
+                assert {export.name for export in exports} >= {
+                    "data.csv",
+                    "data.parquet",
+                    "manifest.json",
+                }
 
             changed = definition.model_copy(update={"name": "Changed draft"})
             async with database.session() as session, session.begin():

@@ -52,17 +52,7 @@ class BuildOutputRepository:
         for model in (DatasetValidationResult, BuildLineage, ExportArtifact):
             await self.session.execute(delete(model).where(model.build_run_id == build.id))
 
-        for issue in validation.issues:
-            self.session.add(
-                DatasetValidationResult(
-                    build_run_id=build.id,
-                    code=issue.code,
-                    severity=issue.severity,
-                    variable=issue.variable,
-                    message=issue.message,
-                    details=issue.details,
-                )
-            )
+        self._add_validation(build.id, validation)
         self.session.add(BuildLineage(build_run_id=build.id, content=bundle.lineage))
         for artifact in bundle.artifacts:
             self.session.add(
@@ -81,6 +71,37 @@ class BuildOutputRepository:
         build.bundle_path = f"builds/{build.id}"
         await self.session.flush()
         return build
+
+    async def record_validation_failure(
+        self,
+        build: BuildRun,
+        validation: ValidationReport,
+    ) -> BuildRun:
+        if validation.passed:
+            raise ValueError("validation failure requires at least one blocking error")
+        await self.session.execute(
+            delete(DatasetValidationResult).where(DatasetValidationResult.build_run_id == build.id)
+        )
+        self._add_validation(build.id, validation)
+        build.status = BuildStatus.FAILED
+        build.finished_at = datetime.now(UTC)
+        build.error_code = "validation_failed"
+        build.error_message = "dataset failed one or more blocking validation rules"
+        await self.session.flush()
+        return build
+
+    def _add_validation(self, build_id: UUID, validation: ValidationReport) -> None:
+        for issue in validation.issues:
+            self.session.add(
+                DatasetValidationResult(
+                    build_run_id=build_id,
+                    code=issue.code,
+                    severity=issue.severity,
+                    variable=issue.variable,
+                    message=issue.message,
+                    details=issue.details,
+                )
+            )
 
     async def list_validation(self, build_id: UUID) -> list[DatasetValidationResult]:
         rows = await self.session.scalars(
