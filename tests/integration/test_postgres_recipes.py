@@ -102,7 +102,15 @@ def test_postgres_freezes_versions_and_reuses_deterministic_builds() -> None:
         assert TEST_DATABASE_URL is not None
         database = Database(TEST_DATABASE_URL)
         await clear_recipes(database)
-        definition = RecipeDefinition.model_validate(valid_recipe())
+        payload = valid_recipe()
+        payload.update(
+            {
+                "start_date": "2024-01-01",
+                "end_date": "2024-12-31",
+                "transformations": [],
+            }
+        )
+        definition = RecipeDefinition.model_validate(payload)
         registry = ProviderRegistry([cast(ProviderConnector, FixtureConnector())])
         planner = BuildPlanner(registry)
 
@@ -135,6 +143,7 @@ def test_postgres_freezes_versions_and_reuses_deterministic_builds() -> None:
 
             execution = await BuildExecutor(registry).execute(version, plan)
             validation = validate_dataset(execution, definition)
+            assert validation.passed is True
             with tempfile.TemporaryDirectory() as temporary_directory:
                 bundle = export_research_bundle(
                     artifact_root=Path(temporary_directory),
