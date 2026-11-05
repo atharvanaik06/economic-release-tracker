@@ -188,9 +188,11 @@ Demo: combine FRED and World Bank fixtures into one four-country annual panel an
 
 ## Phase 6: Add validation, provenance, and export bundles
 
+**Status:** complete.
+
 **Goal:** deliver the first genuinely useful local product.
 
-Deliverables:
+Delivered:
 
 - Coverage, duplicate-key, type, range, and missing-value validation.
 - Recipe-defined warning and error rules.
@@ -202,6 +204,17 @@ Deliverables:
 - Human-readable validation report.
 - Rebuild comparison showing changed inputs and outputs.
 - End-to-end fixture build.
+
+Implementation notes:
+
+- Validation findings have `info`, `warning`, or blocking `error` severity.
+- A build with blocking findings stores its report and fails without publishing a bundle.
+- The dataset checksum covers canonical logical rows rather than format-specific bytes.
+- Every artifact carries a SHA-256 checksum; downloads verify it before serving the file.
+- The manifest captures build identity, recipe hash, software and mapping versions, schema, input fingerprints, validation summary, and artifact metadata.
+- Validation, lineage, exports, and final success are persisted in one short database transaction after files exist.
+- Rebuild comparison distinguishes recipe/input changes from logical output changes.
+- The checked-in sample uses deterministic provider fixtures, not claims about current live values.
 
 Likely commits:
 
@@ -225,7 +238,7 @@ recipe
 → repeat build with identical checksum
 ```
 
-**Local product MVP:** tag `v0.1.0`.
+**Local product MVP:** release `v0.1.0`.
 
 **Portfolio checkpoint:** record the full workflow and publish a sample research bundle.
 

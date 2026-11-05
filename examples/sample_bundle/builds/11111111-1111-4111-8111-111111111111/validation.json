@@ -1,0 +1,24 @@
+{
+  "coverage_percent": 100.0,
+  "expected_row_count": 4,
+  "issues": [
+    {
+      "code": "validation_passed",
+      "details": null,
+      "message": "all dataset validation checks passed",
+      "severity": "info",
+      "variable": null
+    }
+  ],
+  "missing_by_variable": {
+    "gdp_growth": 0,
+    "inflation": 0
+  },
+  "passed": true,
+  "row_count": 4,
+  "summary": {
+    "errors": 0,
+    "info": 1,
+    "warnings": 0
+  }
+}

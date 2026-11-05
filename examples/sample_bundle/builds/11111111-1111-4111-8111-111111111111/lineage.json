@@ -1,0 +1,50 @@
+{
+  "columns": [
+    {
+      "indicator_fingerprint": "ba5f1b2c80f77a1d3f673e34e45d28421f94d6a31ded78f527b67fef07de0ad0",
+      "indicator_id": "NY.GDP.MKTP.KD.ZG",
+      "output_column": "gdp_growth",
+      "provider": "world_bank",
+      "request": {
+        "end_date": "2023-12-31",
+        "entity_ids": [
+          "CZE",
+          "DEU",
+          "FRA",
+          "POL"
+        ],
+        "indicator_id": "NY.GDP.MKTP.KD.ZG",
+        "start_date": "2023-01-01"
+      },
+      "source_frequency": "annual",
+      "source_unit": "percent",
+      "source_url": "https://data.worldbank.org/indicator/NY.GDP.MKTP.KD.ZG",
+      "title": "GDP growth (annual %)",
+      "transformations": []
+    },
+    {
+      "indicator_fingerprint": "8450129137400d804a0031ecec3b131ba04aea61283c0b3efe47056d4758b19a",
+      "indicator_id": "FP.CPI.TOTL.ZG",
+      "output_column": "inflation",
+      "provider": "world_bank",
+      "request": {
+        "end_date": "2023-12-31",
+        "entity_ids": [
+          "CZE",
+          "DEU",
+          "FRA",
+          "POL"
+        ],
+        "indicator_id": "FP.CPI.TOTL.ZG",
+        "start_date": "2023-01-01"
+      },
+      "source_frequency": "annual",
+      "source_unit": "percent",
+      "source_url": "https://data.worldbank.org/indicator/FP.CPI.TOTL.ZG",
+      "title": "Inflation, consumer prices (annual %)",
+      "transformations": []
+    }
+  ],
+  "planner_version": "1",
+  "recipe_content_hash": "e41cd7248d571079a51d05948d1eb496e23275fddf0adfbe727a306bc90792b3"
+}

@@ -1,0 +1,85 @@
+{
+  "application_version": "0.1.0",
+  "artifacts": [
+    {
+      "kind": "csv",
+      "name": "data.csv",
+      "relative_path": "builds/11111111-1111-4111-8111-111111111111/data.csv",
+      "sha256": "2246d16c30fdce9399b37fbedb2a1b1587318181da861e8e14b23b6bfbc783b1",
+      "size_bytes": 201
+    },
+    {
+      "kind": "parquet",
+      "name": "data.parquet",
+      "relative_path": "builds/11111111-1111-4111-8111-111111111111/data.parquet",
+      "sha256": "180e0dfaab036489d7b74e291332665c4302714b5d48ed2e668100c71a32c54e",
+      "size_bytes": 1630
+    },
+    {
+      "kind": "recipe",
+      "name": "recipe.yaml",
+      "relative_path": "builds/11111111-1111-4111-8111-111111111111/recipe.yaml",
+      "sha256": "1df0bb380e6eb3f70256a25893b99c0235a9c97ae2dfef71a9fb70532f6a4c89",
+      "size_bytes": 601
+    },
+    {
+      "kind": "validation",
+      "name": "validation.json",
+      "relative_path": "builds/11111111-1111-4111-8111-111111111111/validation.json",
+      "sha256": "0638b64a28b8077d0b65d0294e748debd5f28b507cd4c79433fdf6f4030d0d8c",
+      "size_bytes": 432
+    },
+    {
+      "kind": "validation_report",
+      "name": "validation.md",
+      "relative_path": "builds/11111111-1111-4111-8111-111111111111/validation.md",
+      "sha256": "a2387bc0fa2594393c8b87c1cc13dc9fe6a6ed6a62725d500645041dff55907c",
+      "size_bytes": 158
+    },
+    {
+      "kind": "codebook",
+      "name": "codebook.json",
+      "relative_path": "builds/11111111-1111-4111-8111-111111111111/codebook.json",
+      "sha256": "e92d572af0ca095d5ad93dfa5e2d8c8a7e9924ae93e728aed46a5a377e263ff4",
+      "size_bytes": 836
+    },
+    {
+      "kind": "citations",
+      "name": "citations.md",
+      "relative_path": "builds/11111111-1111-4111-8111-111111111111/citations.md",
+      "sha256": "24a35da15919a9411e4a95a1f579b24461a663a9bbb7feb51b00b61881ac4ff1",
+      "size_bytes": 439
+    },
+    {
+      "kind": "lineage",
+      "name": "lineage.json",
+      "relative_path": "builds/11111111-1111-4111-8111-111111111111/lineage.json",
+      "sha256": "15cde3375607af266b01bbb1ea13474badad3175abb7cedc503918b3cc252608",
+      "size_bytes": 1511
+    }
+  ],
+  "build_id": "11111111-1111-4111-8111-111111111111",
+  "build_identity": "e41cd7248d571079a51d05948d1eb496e23275fddf0adfbe727a306bc90792b3",
+  "checksum_policy": "manifest lists pre-manifest artifacts; checksums.sha256 lists all files except itself",
+  "columns": [
+    "entity",
+    "period",
+    "gdp_growth",
+    "inflation"
+  ],
+  "dataset_checksum": "48365f72dadb9683fa2be14ab515778220d40592ff93ea4b11779510b698ca05",
+  "entity_mapping_version": "2026-11-04.v1",
+  "input_fingerprints": [
+    "ba5f1b2c80f77a1d3f673e34e45d28421f94d6a31ded78f527b67fef07de0ad0",
+    "8450129137400d804a0031ecec3b131ba04aea61283c0b3efe47056d4758b19a"
+  ],
+  "planner_version": "1",
+  "recipe_content_hash": "e41cd7248d571079a51d05948d1eb496e23275fddf0adfbe727a306bc90792b3",
+  "row_count": 4,
+  "schema_version": "1",
+  "validation": {
+    "errors": 0,
+    "info": 1,
+    "warnings": 0
+  }
+}

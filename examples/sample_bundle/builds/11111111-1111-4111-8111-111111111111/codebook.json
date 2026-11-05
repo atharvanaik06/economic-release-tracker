@@ -1,0 +1,36 @@
+{
+  "columns": [
+    {
+      "column": "entity",
+      "role": "key",
+      "type": "String"
+    },
+    {
+      "column": "period",
+      "role": "key",
+      "type": "Date"
+    },
+    {
+      "column": "gdp_growth",
+      "indicator_id": "NY.GDP.MKTP.KD.ZG",
+      "missing_count": 0,
+      "provider": "world_bank",
+      "role": "variable",
+      "source_frequency": "annual",
+      "title": "GDP growth (annual %)",
+      "type": "Decimal(precision=30, scale=10)",
+      "unit": "percent"
+    },
+    {
+      "column": "inflation",
+      "indicator_id": "FP.CPI.TOTL.ZG",
+      "missing_count": 0,
+      "provider": "world_bank",
+      "role": "variable",
+      "source_frequency": "annual",
+      "title": "Inflation, consumer prices (annual %)",
+      "type": "Decimal(precision=30, scale=10)",
+      "unit": "percent"
+    }
+  ]
+}

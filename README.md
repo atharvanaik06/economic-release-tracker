@@ -49,9 +49,9 @@ The local MVP will support:
 
 Authentication, a browser interface, background queues, cloud storage, additional providers, vintage-aware backtesting, and AI-assisted recipe creation are later phases.
 
-## Current foundation
+## Current product
 
-Phases 1 through 5 are complete:
+Phases 1 through 6 are complete. A frozen recipe can now run through the entire local workflow:
 
 - FastAPI application, validated settings, and structured logging;
 - Docker and PostgreSQL local stack;
@@ -76,9 +76,15 @@ Phases 1 through 5 are complete:
 - rejection of ambiguous or unsupported frequency conversions;
 - outer, inner, and left joins with unmatched-key reporting;
 - durable execution summaries and bounded dataset previews;
+- blocking validation for duplicate keys, types, ranges, and recipe rules;
+- coverage, missing-value, and unmatched-join findings with explicit severity;
+- source-to-output column lineage and a canonical logical-dataset checksum;
+- deterministic CSV and Parquet export with codebook, citations, manifest, and reports;
+- checksum-verified artifact downloads and build-to-build comparisons;
+- transactional validation, lineage, export metadata, and final build success;
 - PostgreSQL integration tests for decimal precision, constraints, ordering, and rollback.
 
-These existing tables form the provider-data and provenance foundation. Dataset recipes, builds, validation results, and export metadata are added in later phases.
+See the checked-in [sample research bundle](examples/sample_bundle/README.md) without running the application. The next phase adds accounts, background workers, and a small browser workflow; those are not required to inspect or demonstrate the local MVP.
 
 ## Quick start
 
@@ -107,6 +113,12 @@ Run all local quality checks:
 .venv/bin/pytest --cov=research_data_builder --cov-report=term-missing
 ```
 
+Generate the deterministic demonstration bundle:
+
+```bash
+PYTHONPATH=src .venv/bin/python scripts/generate_sample_bundle.py
+```
+
 Or start the API and PostgreSQL with Docker:
 
 ```bash
@@ -122,8 +134,9 @@ docker compose up --build
 - [Provider connectors](docs/PROVIDERS.md)
 - [Recipe and build planning](docs/RECIPES.md)
 - [Transformation engine](docs/ENGINE.md)
+- [Validation and research bundles](docs/BUNDLES.md)
 - [Development guide](docs/DEVELOPMENT.md)
 
 ## Current status
 
-Dataset execution and bounded previews are complete. The next phase adds validation, full provenance, deterministic CSV/Parquet exports, codebooks, manifests, and citations.
+The complete local research-data MVP is implemented through Phase 6. A successful build now means retrieval, deterministic transformation, validation, provenance capture, and every required artifact completed together. Phase 7 will turn this synchronous single-user workflow into a hosted multi-user product.

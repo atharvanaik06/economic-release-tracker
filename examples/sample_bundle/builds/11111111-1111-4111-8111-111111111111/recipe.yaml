@@ -1,0 +1,32 @@
+name: European macro panel sample
+description: Deterministic fixture demonstrating the complete local MVP bundle.
+entities:
+- CZE
+- DEU
+- FRA
+- POL
+start_date: '2023-01-01'
+end_date: '2023-12-31'
+variables:
+- provider: world_bank
+  indicator_id: NY.GDP.MKTP.KD.ZG
+  output_name: gdp_growth
+- provider: world_bank
+  indicator_id: FP.CPI.TOTL.ZG
+  output_name: inflation
+output_frequency: annual
+transformations: []
+join:
+  type: outer
+  keys:
+  - entity
+  - period
+missing_values: preserve
+formats:
+- csv
+- parquet
+validations:
+- variable: inflation
+  minimum: -20.0
+  maximum: 100.0
+  severity: error

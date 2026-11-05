@@ -93,6 +93,7 @@ Settings use the `RESEARCH_DATA_` environment prefix.
 | `RESEARCH_DATA_FRED_API_KEY` | unset | Required for live FRED requests |
 | `RESEARCH_DATA_PROVIDER_HTTP_TIMEOUT_SECONDS` | `15` | Timeout for one provider request attempt |
 | `RESEARCH_DATA_PROVIDER_HTTP_MAX_ATTEMPTS` | `3` | Maximum attempts for transient provider failures |
+| `RESEARCH_DATA_ARTIFACT_ROOT` | `artifacts` | Controlled root for generated build bundles |
 
 Copy `.env.example` to `.env` for local overrides. `.env` is ignored by Git. Never commit provider keys, passwords, or private research credentials.
 
@@ -116,6 +117,16 @@ Run the same quality gates used by CI:
 The coverage gate is configured at 90%. New functionality should include tests for success, validation, and failure behavior.
 
 Integration tests are skipped when `RESEARCH_DATA_TEST_DATABASE_URL` is unset. CI supplies a PostgreSQL service, applies the migration, checks for model/schema drift, runs the tests, and verifies downgrade/upgrade behavior.
+
+## Sample bundle
+
+Generate the checked-in Phase 6 example from deterministic provider fixtures:
+
+```bash
+PYTHONPATH=src .venv/bin/python scripts/generate_sample_bundle.py
+```
+
+The command writes only below `examples/sample_bundle/builds/<build-id>`. It requires no provider key or network connection. Review `checksums.sha256` to verify the exported files.
 
 ## Dependency workflow
 

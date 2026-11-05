@@ -87,7 +87,18 @@ bounded JSON preview, and an execution summary containing entity-mapping version
 counts. A transformed build advances to `validating`, not `succeeded`; Phase 6 must complete
 validation and required exports first.
 
-## Later product records
+## Implemented validation, lineage, and export schema
+
+Migration `0004` adds the Phase 6 completion boundary:
+
+```text
+build_runs
+├── validation_results
+├── build_lineage
+└── exports
+```
+
+It also adds the logical dataset checksum and controlled bundle path to `build_runs`.
 
 ### Validation and lineage
 
@@ -96,6 +107,8 @@ Validation records remain queryable rather than existing only in a report file. 
 ### Exports
 
 Export records store format, artifact location, row count, schema, file size, and checksum. The artifact itself is not forced into PostgreSQL.
+
+The service records validation failures without exports. For successful builds it records validation, lineage, every artifact, dataset checksum, bundle path, and the `succeeded` transition in one transaction after the complete bundle exists.
 
 ## Existing invariants
 

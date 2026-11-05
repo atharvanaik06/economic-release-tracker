@@ -152,6 +152,7 @@ Routes are versioned under `/api/v1`. Timestamps use ISO 8601 UTC. Decimal value
 | `GET /api/v1/builds/{build_id}/lineage` | Explain input and transformation lineage. |
 | `GET /api/v1/builds/{build_id}/exports` | List generated artifacts and checksums. |
 | `GET /api/v1/exports/{export_id}/download` | Download or redirect to an authorized artifact. |
+| `GET /api/v1/builds/{build_id}/comparison?other_build_id=...` | Explain recipe, input, and logical dataset changes between builds. |
 
 ### 3.4 Example recipe
 
