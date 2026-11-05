@@ -1,0 +1,59 @@
+"""Tests for strict successful-build persistence."""
+
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
+
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from research_data_builder.artifacts.models import BundleResult, ExportedArtifact
+from research_data_builder.db.models import BuildStatus, DatasetValidationResult, ExportArtifact
+from research_data_builder.db.output_repositories import BuildOutputRepository
+from research_data_builder.validation.models import ValidationIssue, ValidationReport
+
+
+def artifact(name: str) -> ExportedArtifact:
+    return ExportedArtifact(name, "test", f"builds/id/{name}", 1, "a" * 64)
+
+
+def passing_report() -> ValidationReport:
+    return ValidationReport(
+        passed=True,
+        row_count=1,
+        expected_row_count=1,
+        coverage_percent=100.0,
+        issues=(ValidationIssue("validation_passed", "info", "passed"),),
+        missing_by_variable={"value": 0},
+    )
+
+
+@pytest.mark.anyio
+async def test_output_repository_requires_complete_bundle_before_success() -> None:
+    session = MagicMock(spec=AsyncSession)
+    session.execute = AsyncMock()
+    session.flush = AsyncMock()
+    repository = BuildOutputRepository(session)
+    build = MagicMock()
+    build.id = uuid4()
+    names = sorted(repository.REQUIRED_DOCUMENTS | {"data.csv", "data.parquet"})
+    bundle = BundleResult(
+        directory=Path("/tmp/build"),
+        dataset_checksum="b" * 64,
+        artifacts=tuple(artifact(name) for name in names),
+        manifest={},
+        lineage={"columns": []},
+    )
+
+    await repository.record_success(build, bundle, passing_report())
+
+    assert build.status is BuildStatus.SUCCEEDED
+    assert build.dataset_checksum == "b" * 64
+    assert session.execute.await_count == 3
+    added = [call.args[0] for call in session.add.call_args_list]
+    assert any(isinstance(item, DatasetValidationResult) for item in added)
+    assert sum(isinstance(item, ExportArtifact) for item in added) == len(names)
+
+    incomplete = BundleResult(Path("/tmp"), "c" * 64, (), {}, {})
+    with pytest.raises(ValueError, match="missing"):
+        await repository.record_success(build, incomplete, passing_report())

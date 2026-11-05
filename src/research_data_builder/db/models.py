@@ -360,6 +360,8 @@ class BuildRun(Base):
     row_count: Mapped[int | None] = mapped_column(Integer)
     preview: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     execution_summary: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    dataset_checksum: Mapped[str | None] = mapped_column(String(64))
+    bundle_path: Mapped[str | None] = mapped_column(String(512))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -368,6 +370,11 @@ class BuildRun(Base):
 
     recipe_version: Mapped[RecipeVersion] = relationship(back_populates="build_runs")
     inputs: Mapped[list["BuildInput"]] = relationship(back_populates="build_run")
+    validation_results: Mapped[list["DatasetValidationResult"]] = relationship(
+        back_populates="build_run"
+    )
+    lineage: Mapped["BuildLineage | None"] = relationship(back_populates="build_run")
+    exports: Mapped[list["ExportArtifact"]] = relationship(back_populates="build_run")
 
 
 class BuildInput(Base):
@@ -393,3 +400,62 @@ class BuildInput(Base):
     indicator_fingerprint: Mapped[str] = mapped_column(String(64))
 
     build_run: Mapped[BuildRun] = relationship(back_populates="inputs")
+
+
+class DatasetValidationResult(Base):
+    """One persisted machine-readable validation finding."""
+
+    __tablename__ = "validation_results"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    build_run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("build_runs.id", ondelete="RESTRICT"), nullable=False
+    )
+    code: Mapped[str] = mapped_column(String(64))
+    severity: Mapped[str] = mapped_column(String(16))
+    variable: Mapped[str | None] = mapped_column(String(128))
+    message: Mapped[str] = mapped_column(String(1000))
+    details: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    build_run: Mapped[BuildRun] = relationship(back_populates="validation_results")
+
+
+class BuildLineage(Base):
+    """Complete source-to-output column lineage for one successful build."""
+
+    __tablename__ = "build_lineage"
+    __table_args__ = (UniqueConstraint("build_run_id", name="uq_build_lineage_build"),)
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    build_run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("build_runs.id", ondelete="RESTRICT"), nullable=False
+    )
+    content: Mapped[dict[str, Any]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    build_run: Mapped[BuildRun] = relationship(back_populates="lineage")
+
+
+class ExportArtifact(Base):
+    """Checksum-addressed generated file stored outside PostgreSQL."""
+
+    __tablename__ = "exports"
+    __table_args__ = (
+        UniqueConstraint("build_run_id", "name", name="uq_exports_build_name"),
+        CheckConstraint("size_bytes >= 0", name="export_size_nonnegative"),
+        CheckConstraint("length(sha256) = 64", name="export_sha256_length"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    build_run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("build_runs.id", ondelete="RESTRICT"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(255))
+    kind: Mapped[str] = mapped_column(String(64))
+    relative_path: Mapped[str] = mapped_column(String(512))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    build_run: Mapped[BuildRun] = relationship(back_populates="exports")
