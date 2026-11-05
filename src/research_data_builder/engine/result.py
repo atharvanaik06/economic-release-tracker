@@ -30,7 +30,7 @@ class DatasetPreview:
     def as_dict(self) -> dict[str, Any]:
         return {
             "columns": list(self.columns),
-            "rows": [{key: _json_value(value) for key, value in row.items()} for row in self.rows],
+            "rows": [{key: json_value(value) for key, value in row.items()} for row in self.rows],
             "preview_row_count": self.preview_row_count,
             "total_row_count": self.total_row_count,
             "truncated": self.truncated,
@@ -58,7 +58,7 @@ class ExecutionResult:
         )
 
 
-def _json_value(value: Any) -> Any:
+def json_value(value: Any) -> Any:
     if isinstance(value, Decimal):
         return str(value)
     if isinstance(value, date | datetime):
