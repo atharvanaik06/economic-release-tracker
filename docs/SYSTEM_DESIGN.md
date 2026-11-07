@@ -118,7 +118,16 @@ PostgreSQL is the system of record for what happened. Parquet and object storage
 
 Routes are versioned under `/api/v1`. Timestamps use ISO 8601 UTC. Decimal values use strings at JSON boundaries. Collections use bounded cursor pagination.
 
-### 3.1 Provider catalog
+### 3.1 Authentication
+
+| Method and route | Purpose |
+|---|---|
+| `POST /api/v1/auth/register` | Create a researcher account and browser session. |
+| `POST /api/v1/auth/login` | Verify credentials and create a new browser session. |
+| `POST /api/v1/auth/logout` | Revoke the current browser session. |
+| `GET /api/v1/auth/me` | Return the active researcher account. |
+
+### 3.2 Provider catalog
 
 | Method and route | Purpose |
 |---|---|
@@ -128,7 +137,7 @@ Routes are versioned under `/api/v1`. Timestamps use ISO 8601 UTC. Decimal value
 | `GET /api/v1/providers/{provider_id}/indicators` | Search provider indicators. |
 | `GET /api/v1/providers/{provider_id}/indicators/{indicator_id}` | Inspect units, frequency, dimensions, and source metadata. |
 
-### 3.2 Recipes
+### 3.3 Recipes
 
 | Method and route | Purpose |
 |---|---|
@@ -140,7 +149,7 @@ Routes are versioned under `/api/v1`. Timestamps use ISO 8601 UTC. Decimal value
 | `GET /api/v1/recipes/{recipe_id}/versions` | List recipe history. |
 | `GET /api/v1/recipe-versions/{version_id}/export` | Export a frozen version as JSON or YAML. |
 
-### 3.3 Builds and outputs
+### 3.4 Builds and outputs
 
 | Method and route | Purpose |
 |---|---|
@@ -154,7 +163,7 @@ Routes are versioned under `/api/v1`. Timestamps use ISO 8601 UTC. Decimal value
 | `GET /api/v1/exports/{export_id}/download` | Download or redirect to an authorized artifact. |
 | `GET /api/v1/builds/{build_id}/comparison?other_build_id=...` | Explain recipe, input, and logical dataset changes between builds. |
 
-### 3.4 Example recipe
+### 3.5 Example recipe
 
 ```json
 {
@@ -182,7 +191,7 @@ Routes are versioned under `/api/v1`. Timestamps use ISO 8601 UTC. Decimal value
 }
 ```
 
-### 3.5 API behavior
+### 3.6 API behavior
 
 - Recipe validation returns structured field and semantic errors.
 - Freezing creates a new immutable version and never mutates older versions.

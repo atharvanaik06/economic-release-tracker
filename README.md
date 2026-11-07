@@ -47,7 +47,9 @@ The local MVP will support:
 - exact input and transformation lineage;
 - fixture-driven tests that do not depend on live provider availability.
 
-Authentication, a browser interface, background queues, cloud storage, additional providers, vintage-aware backtesting, and AI-assisted recipe creation are later phases.
+Recipe ownership, a browser interface, background queues, cloud storage, additional providers, vintage-aware backtesting, and AI-assisted recipe creation are later phases.
+
+Phase 7 is now in progress. Secure user accounts and revocable browser sessions are implemented; ownership enforcement and asynchronous builds are the next slices.
 
 ## Current product
 
@@ -135,6 +137,7 @@ docker compose up --build
 - [Recipe and build planning](docs/RECIPES.md)
 - [Transformation engine](docs/ENGINE.md)
 - [Validation and research bundles](docs/BUNDLES.md)
+- [Authentication and browser sessions](docs/AUTHENTICATION.md)
 - [Development guide](docs/DEVELOPMENT.md)
 
 ## Current status

@@ -244,7 +244,17 @@ recipe
 
 ## Phase 7: Add multi-user workflows and asynchronous builds
 
+**Status:** in progress.
+
 **Goal:** make long-running builds safe and usable as a hosted application.
+
+Delivered so far:
+
+- Researcher registration, login, logout, and current-account endpoints.
+- Memory-hard salted password hashing without storing plaintext credentials.
+- Opaque HTTP-only browser sessions with hashed token storage, expiry, and revocation.
+- Reusable authenticated-user boundary for the ownership layer.
+- Migration `0005` and PostgreSQL session-lifecycle coverage.
 
 Deliverables:
 

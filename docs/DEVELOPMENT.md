@@ -94,6 +94,8 @@ Settings use the `RESEARCH_DATA_` environment prefix.
 | `RESEARCH_DATA_PROVIDER_HTTP_TIMEOUT_SECONDS` | `15` | Timeout for one provider request attempt |
 | `RESEARCH_DATA_PROVIDER_HTTP_MAX_ATTEMPTS` | `3` | Maximum attempts for transient provider failures |
 | `RESEARCH_DATA_ARTIFACT_ROOT` | `artifacts` | Controlled root for generated build bundles |
+| `RESEARCH_DATA_SESSION_COOKIE_NAME` | `research_data_session` | Opaque browser-session cookie name |
+| `RESEARCH_DATA_SESSION_TTL_HOURS` | `168` | Session lifetime in hours |
 
 Copy `.env.example` to `.env` for local overrides. `.env` is ignored by Git. Never commit provider keys, passwords, or private research credentials.
 
