@@ -14,6 +14,8 @@ def test_settings_use_safe_defaults() -> None:
     assert settings.fred_api_key is None
     assert settings.provider_http_timeout_seconds == 15.0
     assert settings.provider_http_max_attempts == 3
+    assert settings.session_cookie_name == "research_data_session"
+    assert settings.session_ttl_hours == 168
 
 
 def test_settings_load_prefixed_environment(monkeypatch: pytest.MonkeyPatch) -> None:

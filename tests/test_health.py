@@ -34,6 +34,10 @@ def test_openapi_document_is_available(app: FastAPI) -> None:
     assert response.json()["info"]["title"] == "Research Data Builder API"
     assert "/health" in response.json()["paths"]
     assert "/ready" in response.json()["paths"]
+    assert "/api/v1/auth/register" in response.json()["paths"]
+    assert "/api/v1/auth/login" in response.json()["paths"]
+    assert "/api/v1/auth/logout" in response.json()["paths"]
+    assert "/api/v1/auth/me" in response.json()["paths"]
 
 
 def test_readiness_reports_healthy_database(app: FastAPI) -> None:

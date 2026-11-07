@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     provider_http_timeout_seconds: float = Field(default=15.0, gt=0, le=120)
     provider_http_max_attempts: int = Field(default=3, ge=1, le=10)
     artifact_root: Path = Path("artifacts")
+    session_cookie_name: str = Field(default="research_data_session", min_length=1, max_length=64)
+    session_ttl_hours: int = Field(default=168, ge=1, le=24 * 90)
 
     @field_validator("log_level")
     @classmethod

@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from research_data_builder.api.auth import router as auth_router
 from research_data_builder.api.health import router as health_router
 from research_data_builder.api.recipes import router as recipe_router
 from research_data_builder.core.config import Settings, get_settings
@@ -50,6 +51,7 @@ def create_app(
     application.state.database = resolved_database
     application.state.provider_registry = resolved_registry
     application.include_router(health_router)
+    application.include_router(auth_router)
     application.include_router(recipe_router)
 
     logger.info(
